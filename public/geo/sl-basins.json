@@ -1,0 +1,45 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "id": "kelani", "name": "Kelani River Basin", "color": "#3b82f6" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[79.8, 6.8], [80.3, 6.8], [80.5, 7.1], [79.9, 7.1], [79.8, 6.8]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "kalu", "name": "Kalu River Basin", "color": "#06b6d4" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[79.9, 6.5], [80.5, 6.4], [80.6, 6.8], [80.0, 6.8], [79.9, 6.5]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "gin", "name": "Gin River Basin", "color": "#10b981" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[80.1, 6.1], [80.5, 6.1], [80.5, 6.4], [80.1, 6.4], [80.1, 6.1]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "nilwala", "name": "Nilwala River Basin", "color": "#8b5cf6" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[80.4, 5.9], [80.7, 5.9], [80.7, 6.3], [80.4, 6.3], [80.4, 5.9]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "mahaweli", "name": "Mahaweli River Basin", "color": "#f59e0b" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[80.4, 7.0], [81.2, 7.5], [81.3, 8.6], [80.6, 8.2], [80.4, 7.0]]]
+      }
+    }
+  ]
+}

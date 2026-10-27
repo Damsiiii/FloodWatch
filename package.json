@@ -1,0 +1,39 @@
+{
+  "name": "lankaflood-watch",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "wrangler:types": "wrangler types",
+    "db:generate": "drizzle-kit generate",
+    "worker:dev": "wrangler dev worker/index.ts"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "drizzle-orm": "^0.38.3",
+    "hono": "^4.6.14",
+    "lucide-react": "^0.469.0",
+    "maplibre-gl": "^4.7.1",
+    "next": "^14.2.22",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwind-merge": "^2.5.5",
+    "uplot": "^1.6.31"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241230.0",
+    "@types/maplibre-gl": "^1.14.0",
+    "@types/node": "^20.17.10",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "autoprefixer": "^10.4.20",
+    "drizzle-kit": "^0.30.1",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.2",
+    "wrangler": "^3.99.0"
+  }
+}
