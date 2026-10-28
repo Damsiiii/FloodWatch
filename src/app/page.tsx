@@ -36,6 +36,7 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
+    setLastSync(new Date(data.timestamp).toLocaleTimeString());
     fetchSnapshot();
     const interval = setInterval(fetchSnapshot, 300000);
     return () => clearInterval(interval);
@@ -77,7 +78,7 @@ export default function Dashboard() {
             className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-md border border-slate-700 text-slate-300 transition"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-cyan-400' : ''}`} />
-            <span>{lastSync ? `Synced ${lastSync}` : 'Refresh'}</span>
+            <span suppressHydrationWarning>{lastSync ? `Synced ${lastSync}` : 'Syncing...'}</span>
           </button>
         </div>
       </header>
@@ -116,7 +117,7 @@ export default function Dashboard() {
                       {selectedStation.basin}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-400 font-mono mt-0.5">
+                  <p className="text-xs text-slate-400 font-mono mt-0.5" suppressHydrationWarning>
                     Lat: {selectedStation.lat.toFixed(4)} | Lng: {selectedStation.lng.toFixed(4)} | Last Updated: {new Date(selectedStation.last_updated).toLocaleTimeString()}
                   </p>
                 </div>

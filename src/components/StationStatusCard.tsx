@@ -79,6 +79,13 @@ export const StationStatusCard: React.FC<StationStatusCardProps> = ({
           </div>
         </div>
       </div>
+
+      <div className="mt-2.5 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px] font-mono text-slate-500">
+        <span>Last Synced</span>
+        <span className="text-slate-400" suppressHydrationWarning>
+          {new Date(station.last_updated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+        </span>
+      </div>
     </div>
   );
 };
