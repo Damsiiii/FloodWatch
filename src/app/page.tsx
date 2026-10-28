@@ -7,14 +7,14 @@ import { AlertsTicker } from '../components/AlertsTicker';
 import { StationStatusCard } from '../components/StationStatusCard';
 import { MapViewer } from '../components/MapViewer';
 import { HydrographChart } from '../components/HydrographChart';
-import { Waves, ShieldAlert, Activity, RefreshCw, X, Map, List } from 'lucide-react';
+import { Waves, ShieldAlert, Activity, RefreshCw, X, ChevronDown, ChevronUp } from 'lucide-react';
 
 export default function Dashboard() {
   const [data, setData] = useState<HydrologySnapshotPayload>(MOCK_SNAPSHOT);
   const [selectedStation, setSelectedStation] = useState<StationSnapshot | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [lastSync, setLastSync] = useState<string>('');
-  const [mobileTab, setMobileTab] = useState<'map' | 'stations'>('map');
+  const [isMobileListExpanded, setIsMobileListExpanded] = useState<boolean>(false);
 
   const fetchSnapshot = async () => {
     setIsLoading(true);
@@ -46,7 +46,7 @@ export default function Dashboard() {
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-slate-950 text-slate-100">
       {/* Top Navbar */}
-      <header className="bg-slate-900 border-b border-slate-800 px-3 md:px-4 py-2.5 md:py-3 flex items-center justify-between gap-2 shrink-0">
+      <header className="bg-slate-900 border-b border-slate-800 px-3 md:px-4 py-2.5 md:py-3 flex items-center justify-between gap-2 shrink-0 z-20">
         <div className="flex items-center gap-2.5">
           <div className="p-1.5 md:p-2 bg-cyan-950 border border-cyan-800 rounded-lg text-cyan-400">
             <Waves className="w-5 h-5 md:w-6 md:h-6 animate-pulse" />
@@ -92,16 +92,43 @@ export default function Dashboard() {
 
       {/* Main Workspace */}
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
-        {/* Sidebar (List View) */}
-        <div className={`w-full md:w-80 lg:w-96 border-r border-slate-800 bg-slate-950/90 p-3 overflow-y-auto space-y-2 shrink-0 ${
-          mobileTab === 'stations' ? 'flex flex-col flex-1 z-10' : 'hidden md:block'
-        }`}>
-          <div className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
-            <span>River Stations ({data.stations.length})</span>
-            <span className="text-[10px] text-slate-500 md:hidden font-normal">Tap a station to inspect</span>
+        {/* Desktop Sidebar / Mobile Pull-Up Sheet */}
+        <aside
+          className={`
+            bg-slate-950/95 md:bg-slate-950/90 border-slate-800 backdrop-blur-md transition-all duration-300 ease-in-out
+            fixed md:static inset-x-0 bottom-0 z-30 md:z-10
+            flex flex-col md:w-80 lg:w-96 md:border-r
+            ${isMobileListExpanded ? 'h-[75vh]' : 'h-14 md:h-full'}
+            rounded-t-2xl md:rounded-none border-t md:border-t-0 shadow-2xl md:shadow-none
+          `}
+        >
+          {/* Header & Mobile Drag/Touch Handle */}
+          <div
+            onClick={() => setIsMobileListExpanded(prev => !prev)}
+            className="p-3 md:p-3.5 border-b border-slate-800/80 flex items-center justify-between cursor-pointer md:cursor-default select-none shrink-0"
+          >
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse md:hidden"></span>
+              <span className="text-xs font-mono font-bold text-slate-200 uppercase tracking-wider">
+                River Stations ({data.stations.length})
+              </span>
+            </div>
+
+            {/* Mobile Expand / Collapse Chevron */}
+            <div className="flex items-center gap-1.5 text-xs text-slate-400 font-mono md:hidden">
+              <span className="text-[11px] text-cyan-400 font-semibold">
+                {isMobileListExpanded ? 'Hide List' : 'Swipe Up for Stations'}
+              </span>
+              {isMobileListExpanded ? (
+                <ChevronDown className="w-4 h-4 text-cyan-400" />
+              ) : (
+                <ChevronUp className="w-4 h-4 text-cyan-400" />
+              )}
+            </div>
           </div>
 
-          <div className="space-y-2 pb-14 md:pb-0">
+          {/* Scrollable Stations List */}
+          <div className="flex-1 overflow-y-auto p-3 space-y-2 overscroll-contain">
             {data.stations.map((st) => (
               <StationStatusCard
                 key={st.id}
@@ -109,17 +136,15 @@ export default function Dashboard() {
                 isSelected={selectedStation?.id === st.id}
                 onSelect={(station) => {
                   setSelectedStation(station);
-                  setMobileTab('map'); // Switch to map when user picks a station on mobile
+                  setIsMobileListExpanded(false); // Collapse sheet to reveal station on map
                 }}
               />
             ))}
           </div>
-        </div>
+        </aside>
 
         {/* Map View */}
-        <div className={`flex-1 p-2 md:p-3 flex flex-col relative overflow-hidden ${
-          mobileTab === 'map' ? 'flex flex-1' : 'hidden md:flex'
-        }`}>
+        <main className="flex-1 p-2 md:p-3 flex flex-col relative overflow-hidden pb-16 md:pb-3">
           <MapViewer
             stations={data.stations}
             rainfall={data.rainfall}
@@ -129,7 +154,7 @@ export default function Dashboard() {
 
           {/* Station Details Drawer */}
           {selectedStation && (
-            <div className="absolute bottom-16 md:bottom-4 left-2 right-2 md:left-6 md:right-6 max-h-[60vh] overflow-y-auto bg-slate-900/95 backdrop-blur-md border border-slate-800 rounded-xl p-3 md:p-4 shadow-2xl z-20 transition-all">
+            <div className="absolute bottom-16 md:bottom-4 left-2 right-2 md:left-6 md:right-6 max-h-[55vh] overflow-y-auto bg-slate-900/95 backdrop-blur-md border border-slate-800 rounded-xl p-3 md:p-4 shadow-2xl z-20 transition-all">
               <div className="flex items-start justify-between mb-2 md:mb-3 border-b border-slate-800/80 pb-2">
                 <div>
                   <div className="flex items-center gap-2">
@@ -155,30 +180,7 @@ export default function Dashboard() {
               <HydrographChart station={selectedStation} />
             </div>
           )}
-        </div>
-      </div>
-
-      {/* Mobile Bottom Navigation Bar */}
-      <div className="md:hidden bg-slate-900/95 backdrop-blur-md border-t border-slate-800 px-6 py-2 flex items-center justify-around z-30 shrink-0">
-        <button
-          onClick={() => setMobileTab('map')}
-          className={`flex flex-col items-center gap-1 text-xs font-mono transition ${
-            mobileTab === 'map' ? 'text-cyan-400 font-bold' : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Map className="w-5 h-5" />
-          <span>Live Radar</span>
-        </button>
-
-        <button
-          onClick={() => setMobileTab('stations')}
-          className={`flex flex-col items-center gap-1 text-xs font-mono transition ${
-            mobileTab === 'stations' ? 'text-cyan-400 font-bold' : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <List className="w-5 h-5" />
-          <span>Stations ({data.stations.length})</span>
-        </button>
+        </main>
       </div>
     </div>
   );
