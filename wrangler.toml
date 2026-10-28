@@ -8,8 +8,8 @@ crons = ["*/5 * * * *"]
 [[d1_databases]]
 binding = "DB"
 database_name = "lankaflood-db"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "f9a70e5c-09cd-4478-8c64-a7a455f8b412"
 
 [[kv_namespaces]]
 binding = "SNAPSHOT_KV"
-id = "00000000000000000000000000000000"
+id = "796bb724f8d34c88b482d3e1447a8370"
