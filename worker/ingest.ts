@@ -1,12 +1,71 @@
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, desc } from 'drizzle-orm';
-import { stations, readings } from '../src/db/schema';
-import { HydrologySnapshotPayload, StationSnapshot, StationStatus } from '../src/types/hydrology';
-import { MOCK_SNAPSHOT, MOCK_STATIONS } from './mockData';
+import { stations, readings, basinRainfall } from '../src/db/schema';
+import { HydrologySnapshotPayload, StationSnapshot, StationStatus, BasinRainfallSnapshot } from '../src/types/hydrology';
+import { MOCK_SNAPSHOT, MOCK_STATIONS, MOCK_RAINFALL } from './mockData';
 
 export interface Env {
   DB?: D1Database;
   SNAPSHOT_KV?: KVNamespace;
+}
+
+const BASIN_CENTROIDS: Record<string, { name: string; lat: number; lng: number }> = {
+  kelani: { name: 'Kelani Ganga', lat: 6.98, lng: 80.22 },
+  kalu: { name: 'Kalu Ganga', lat: 6.64, lng: 80.35 },
+  gin: { name: 'Gin Ganga', lat: 6.26, lng: 80.32 },
+  nilwala: { name: 'Nilwala Ganga', lat: 6.15, lng: 80.55 },
+  attanagalu: { name: 'Attanagalu Oya', lat: 7.12, lng: 80.08 },
+  maha: { name: 'Maha Oya', lat: 7.31, lng: 80.12 },
+  deduru: { name: 'Deduru Oya', lat: 7.58, lng: 80.20 },
+  mahaweli: { name: 'Mahaweli Ganga', lat: 7.55, lng: 80.85 }
+};
+
+async function fetchRainfallData(env: Env, nowIso: string): Promise<BasinRainfallSnapshot[]> {
+  const keys = Object.keys(BASIN_CENTROIDS);
+  const lats = keys.map(k => BASIN_CENTROIDS[k].lat).join(',');
+  const lngs = keys.map(k => BASIN_CENTROIDS[k].lng).join(',');
+
+  try {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lngs}&current=precipitation,rain&timezone=Asia%2FColombo`;
+    const res = await fetch(url, { headers: { 'User-Agent': 'LankaFloodWatch/1.0' } });
+
+    if (!res.ok) throw new Error(`Open-Meteo HTTP ${res.status}`);
+    const data = await res.json() as any;
+
+    const list: BasinRainfallSnapshot[] = keys.map((key, i) => {
+      const item = Array.isArray(data) ? data[i] : data;
+      const mm = Number(item?.current?.precipitation ?? item?.current?.rain ?? 0);
+      return {
+        basin_id: key,
+        basin_name: BASIN_CENTROIDS[key].name,
+        lat: BASIN_CENTROIDS[key].lat,
+        lng: BASIN_CENTROIDS[key].lng,
+        precipitation_mm: mm,
+        observed_at: nowIso
+      };
+    });
+
+    if (env.DB) {
+      try {
+        const db = drizzle(env.DB);
+        for (const item of list) {
+          await db.insert(basinRainfall).values({
+            basin_id: item.basin_id,
+            basin_name: item.basin_name,
+            precipitation_mm: item.precipitation_mm,
+            observed_at: item.observed_at
+          }).onConflictDoNothing();
+        }
+      } catch (dbErr) {
+        console.warn('Failed saving rainfall to D1:', dbErr);
+      }
+    }
+
+    return list;
+  } catch (err) {
+    console.warn('Falling back to mock rainfall:', err);
+    return MOCK_RAINFALL;
+  }
 }
 
 export async function runIngestion(env: Env): Promise<HydrologySnapshotPayload> {
@@ -24,24 +83,25 @@ export async function runIngestion(env: Env): Promise<HydrologySnapshotPayload> 
   const db = drizzle(env.DB);
 
   try {
-    const [gaugesRes, alertsRes] = await Promise.allSettled([
-      fetch('https://risesrilanka.org/api/gauges'),
-      fetch('https://risesrilanka.org/api/alerts')
+    const [gaugesRes, alertsRes, rainfall] = await Promise.all([
+      fetch('https://risesrilanka.org/api/gauges').catch(() => null),
+      fetch('https://risesrilanka.org/api/alerts').catch(() => null),
+      fetchRainfallData(env, nowIso)
     ]);
 
     let upstreamGauges: any[] = [];
-    if (gaugesRes.status === 'fulfilled' && gaugesRes.value.ok) {
+    if (gaugesRes && gaugesRes.ok) {
       try {
-        upstreamGauges = await gaugesRes.value.json();
+        upstreamGauges = await gaugesRes.json();
       } catch (e) {
         console.warn('Failed parsing gauges json:', e);
       }
     }
 
     let upstreamAlerts: any[] = [];
-    if (alertsRes.status === 'fulfilled' && alertsRes.value.ok) {
+    if (alertsRes && alertsRes.ok) {
       try {
-        upstreamAlerts = await alertsRes.value.json();
+        upstreamAlerts = await alertsRes.json();
       } catch (e) {
         console.warn('Failed parsing alerts json:', e);
       }
@@ -154,6 +214,7 @@ export async function runIngestion(env: Env): Promise<HydrologySnapshotPayload> 
     const payload: HydrologySnapshotPayload = {
       timestamp: nowIso,
       stations: stationSnapshots,
+      rainfall: rainfall,
       summary: {
         total_stations: stationSnapshots.length,
         active_alerts: totalAlerts,

@@ -103,6 +103,7 @@ export default function Dashboard() {
         <div className="flex-1 p-3 flex flex-col relative overflow-hidden">
           <MapViewer
             stations={data.stations}
+            rainfall={data.rainfall}
             selectedStation={selectedStation}
             onSelectStation={(st) => setSelectedStation(st)}
           />
