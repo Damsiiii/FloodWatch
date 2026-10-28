@@ -29,11 +29,11 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 function getRainfallColor(mm: number): string {
-  if (mm >= 30) return '#ef4444'; // Extreme / Flash-flood risk
-  if (mm >= 15) return '#f97316'; // Heavy rain
-  if (mm >= 5)  return '#06b6d4'; // Moderate rain
-  if (mm > 0.5) return '#3b82f6'; // Light rain
-  return '#64748b';               // Dry / Negligible
+  if (mm >= 30) return '#ef4444';
+  if (mm >= 15) return '#f97316';
+  if (mm >= 5)  return '#06b6d4';
+  if (mm > 0.5) return '#3b82f6';
+  return '#64748b';
 }
 
 function getRainfallLabel(mm: number): string {
@@ -102,7 +102,7 @@ export const MapViewer: React.FC<MapViewerProps> = ({
       container: mapContainer.current,
       style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
       center: [80.7718, 7.8731],
-      zoom: 7.2,
+      zoom: 7.0,
       attributionControl: false
     });
 
@@ -156,7 +156,6 @@ export const MapViewer: React.FC<MapViewerProps> = ({
     };
   }, []);
 
-  // Update polygon colors and markers on state or mode changes
   useEffect(() => {
     const currentMap = map.current;
     if (!currentMap) return;
@@ -166,7 +165,6 @@ export const MapViewer: React.FC<MapViewerProps> = ({
       (currentMap.getSource('sl-basins') as maplibregl.GeoJSONSource).setData(updated);
     }
 
-    // Clear previous markers
     Object.values(markersRef.current).forEach(m => m.remove());
     markersRef.current = {};
     rainMarkersRef.current.forEach(m => m.remove());
@@ -192,8 +190,8 @@ export const MapViewer: React.FC<MapViewerProps> = ({
 
         el.innerHTML = `
           <div class="relative">
-            <div class="w-6 h-6 rounded-full border-2 ${colorClass} shadow-lg transition-transform ${isSelected ? 'scale-125 ring-4 ring-cyan-400' : 'hover:scale-110'} flex items-center justify-center">
-              <span class="w-2 h-2 rounded-full bg-white"></span>
+            <div class="w-5 h-5 md:w-6 md:h-6 rounded-full border-2 ${colorClass} shadow-lg transition-transform ${isSelected ? 'scale-125 ring-4 ring-cyan-400' : 'hover:scale-110'} flex items-center justify-center">
+              <span class="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-white"></span>
             </div>
             <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-slate-900/95 border border-slate-700 text-slate-100 text-[11px] font-mono px-2.5 py-1 rounded shadow-xl whitespace-nowrap z-50">
               <strong>${station.name}</strong> (${station.current_level !== null ? station.current_level.toFixed(2) + 'm' : 'N/A'})
@@ -213,7 +211,6 @@ export const MapViewer: React.FC<MapViewerProps> = ({
         markersRef.current[station.id] = marker;
       });
     } else {
-      // Render Rainfall centroid badges
       (rainfall || []).forEach((rain) => {
         const el = document.createElement('div');
         el.className = 'group cursor-pointer';
@@ -222,10 +219,10 @@ export const MapViewer: React.FC<MapViewerProps> = ({
 
         el.innerHTML = `
           <div class="relative flex items-center justify-center">
-            <div class="px-2.5 py-1 rounded-full border border-slate-700/80 bg-slate-900/90 shadow-2xl backdrop-blur flex items-center gap-1.5 font-mono text-xs hover:scale-110 transition-transform">
+            <div class="px-2 py-0.5 md:px-2.5 md:py-1 rounded-full border border-slate-700/80 bg-slate-900/90 shadow-2xl backdrop-blur flex items-center gap-1.5 font-mono text-[11px] md:text-xs hover:scale-110 transition-transform">
               <span class="w-2 h-2 rounded-full" style="background-color: ${color}"></span>
               <strong class="text-slate-200">${rain.precipitation_mm.toFixed(1)}</strong>
-              <span class="text-[10px] text-slate-400">mm/h</span>
+              <span class="text-[9px] md:text-[10px] text-slate-400">mm/h</span>
             </div>
             <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-slate-900/95 border border-slate-700 text-slate-100 text-[11px] font-mono px-2.5 py-1 rounded shadow-xl whitespace-nowrap z-50">
               <strong>${rain.basin_name} Basin</strong>
@@ -254,55 +251,53 @@ export const MapViewer: React.FC<MapViewerProps> = ({
   }, [selectedStation, viewMode]);
 
   return (
-    <div className="relative w-full h-full min-h-[450px]">
+    <div className="relative w-full h-full min-h-[350px]">
       <div ref={mapContainer} className="w-full h-full absolute inset-0 rounded-xl overflow-hidden border border-slate-800" />
       
       {/* Layer Toggle Switch */}
-      <div className="absolute top-3 right-14 z-10 bg-slate-900/90 backdrop-blur border border-slate-800 rounded-lg p-1 flex items-center gap-1 shadow-2xl font-mono text-xs">
+      <div className="absolute top-2.5 right-12 md:top-3 md:right-14 z-10 bg-slate-900/90 backdrop-blur border border-slate-800 rounded-lg p-0.5 md:p-1 flex items-center gap-1 shadow-2xl font-mono text-[11px] md:text-xs">
         <button
           onClick={() => setViewMode('stations')}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition ${
+          className={`flex items-center gap-1 px-2 py-1 rounded-md transition ${
             viewMode === 'stations'
               ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-semibold'
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
-          <Waves className="w-3.5 h-3.5" />
+          <Waves className="w-3 h-3 md:w-3.5 md:h-3.5" />
           <span>Rivers ({stations.length})</span>
         </button>
 
         <button
           onClick={() => setViewMode('rainfall')}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition ${
+          className={`flex items-center gap-1 px-2 py-1 rounded-md transition ${
             viewMode === 'rainfall'
               ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40 font-semibold'
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
-          <CloudRain className="w-3.5 h-3.5" />
-          <span>Rainfall Radar</span>
+          <CloudRain className="w-3 h-3 md:w-3.5 md:h-3.5" />
+          <span>Rainfall</span>
         </button>
       </div>
 
       {/* Legend */}
-      <div className="absolute top-3 left-3 bg-slate-900/90 backdrop-blur border border-slate-800 rounded-lg p-2.5 text-xs text-slate-300 space-y-1 z-10 font-mono shadow-xl">
+      <div className="absolute top-2.5 left-2.5 md:top-3 md:left-3 bg-slate-900/90 backdrop-blur border border-slate-800 rounded-lg p-2 md:p-2.5 text-[10px] md:text-xs text-slate-300 space-y-1 z-10 font-mono shadow-xl max-w-[125px] md:max-w-none">
         {viewMode === 'stations' ? (
           <>
-            <div className="font-bold text-slate-100 uppercase tracking-wider text-[10px] mb-1">Critical Level</div>
-            <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Major Flood</div>
-            <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-orange-500"></span> Minor Flood</div>
-            <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Alert Level</div>
-            <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Normal</div>
-            <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-slate-500"></span> Offline / Stale</div>
+            <div className="font-bold text-slate-100 uppercase tracking-wider text-[9px] md:text-[10px] mb-0.5">Critical Level</div>
+            <div className="flex items-center gap-1.5"><span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-full bg-rose-500 shrink-0"></span> Major Flood</div>
+            <div className="flex items-center gap-1.5"><span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-full bg-orange-500 shrink-0"></span> Minor Flood</div>
+            <div className="flex items-center gap-2 hidden sm:flex"><span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Alert Level</div>
+            <div className="flex items-center gap-1.5"><span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-full bg-emerald-500 shrink-0"></span> Normal</div>
           </>
         ) : (
           <>
-            <div className="font-bold text-slate-100 uppercase tracking-wider text-[10px] mb-1">Precipitation (mm/h)</div>
-            <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span> &ge; 30 (Extreme)</div>
-            <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-orange-500"></span> 15 - 30 (Heavy)</div>
-            <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-cyan-500"></span> 5 - 15 (Moderate)</div>
-            <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span> 0.5 - 5 (Light)</div>
-            <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-slate-500"></span> &lt; 0.5 (Dry)</div>
+            <div className="font-bold text-slate-100 uppercase tracking-wider text-[9px] md:text-[10px] mb-0.5">Precipitation</div>
+            <div className="flex items-center gap-1.5"><span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-full bg-rose-500 shrink-0"></span> &ge;30 mm (Extreme)</div>
+            <div className="flex items-center gap-1.5"><span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-full bg-orange-500 shrink-0"></span> 15-30 mm (Heavy)</div>
+            <div className="flex items-center gap-1.5"><span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-full bg-cyan-500 shrink-0"></span> 5-15 mm (Mod)</div>
+            <div className="flex items-center gap-1.5"><span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-full bg-blue-500 shrink-0"></span> &lt;5 mm (Light)</div>
           </>
         )}
       </div>
