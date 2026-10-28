@@ -372,9 +372,21 @@ export const MOCK_STATIONS: StationSnapshot[] = [
   }
 ];
 
+export const MOCK_RAINFALL = [
+  { basin_id: 'kelani', basin_name: 'Kelani Ganga', lat: 6.98, lng: 80.22, precipitation_mm: 18.5, observed_at: nowIso },
+  { basin_id: 'kalu', basin_name: 'Kalu Ganga', lat: 6.64, lng: 80.35, precipitation_mm: 34.2, observed_at: nowIso },
+  { basin_id: 'gin', basin_name: 'Gin Ganga', lat: 6.26, lng: 80.32, precipitation_mm: 12.0, observed_at: nowIso },
+  { basin_id: 'nilwala', basin_name: 'Nilwala Ganga', lat: 6.15, lng: 80.55, precipitation_mm: 4.8, observed_at: nowIso },
+  { basin_id: 'attanagalu', basin_name: 'Attanagalu Oya', lat: 7.12, lng: 80.08, precipitation_mm: 14.6, observed_at: nowIso },
+  { basin_id: 'maha', basin_name: 'Maha Oya', lat: 7.31, lng: 80.12, precipitation_mm: 8.4, observed_at: nowIso },
+  { basin_id: 'deduru', basin_name: 'Deduru Oya', lat: 7.58, lng: 80.20, precipitation_mm: 2.1, observed_at: nowIso },
+  { basin_id: 'mahaweli', basin_name: 'Mahaweli Ganga', lat: 7.55, lng: 80.85, precipitation_mm: 6.5, observed_at: nowIso }
+];
+
 export const MOCK_SNAPSHOT: HydrologySnapshotPayload = {
   timestamp: nowIso,
   stations: MOCK_STATIONS,
+  rainfall: MOCK_RAINFALL,
   summary: {
     total_stations: MOCK_STATIONS.length,
     active_alerts: MOCK_STATIONS.filter(s => s.status === 'ALERT').length,

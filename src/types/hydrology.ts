@@ -20,6 +20,15 @@ export interface Reading {
   observed_at: string; // ISO-8601
 }
 
+export interface BasinRainfallSnapshot {
+  basin_id: string;
+  basin_name: string;
+  lat: number;
+  lng: number;
+  precipitation_mm: number;
+  observed_at: string;
+}
+
 export interface StationSnapshot extends Station {
   current_level: number | null;
   rate_of_change: number;
@@ -34,6 +43,7 @@ export interface StationSnapshot extends Station {
 export interface HydrologySnapshotPayload {
   timestamp: string;
   stations: StationSnapshot[];
+  rainfall?: BasinRainfallSnapshot[];
   summary: {
     total_stations: number;
     active_alerts: number;

@@ -23,3 +23,15 @@ export const readings = sqliteTable('readings', {
     stationObservedIdx: uniqueIndex('station_observed_idx').on(table.station_id, table.observed_at),
   };
 });
+
+export const basinRainfall = sqliteTable('basin_rainfall', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  basin_id: text('basin_id').notNull(),
+  basin_name: text('basin_name').notNull(),
+  precipitation_mm: real('precipitation_mm').notNull(),
+  observed_at: text('observed_at').notNull(),
+}, (table) => {
+  return {
+    basinObservedIdx: uniqueIndex('basin_observed_idx').on(table.basin_id, table.observed_at),
+  };
+});
