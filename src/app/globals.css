@@ -59,3 +59,15 @@ body {
 .animate-ticker:hover {
   animation-play-state: paused;
 }
+
+.floodwatch-hover-popup .maplibregl-popup-content {
+  background: transparent !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+.floodwatch-hover-popup .maplibregl-popup-tip {
+  border-top-color: #0f172a !important;
+  border-bottom-color: #0f172a !important;
+}

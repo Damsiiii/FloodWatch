@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
-import { StationSnapshot, BasinRainfallSnapshot, AlertSeverityLevel } from '../types/hydrology';
+import { StationSnapshot, BasinRainfallSnapshot } from '../types/hydrology';
 import { CloudRain, Waves } from 'lucide-react';
 
 interface MapViewerProps {
@@ -34,6 +34,14 @@ function getRainfallColor(mm: number): string {
   if (mm >= 5)  return '#06b6d4';
   if (mm > 0.5) return '#3b82f6';
   return '#64748b';
+}
+
+function getRainfallLabel(mm: number): string {
+  if (mm >= 30) return 'Extreme (>30mm)';
+  if (mm >= 15) return 'Heavy (15-30mm)';
+  if (mm >= 5)  return 'Moderate (5-15mm)';
+  if (mm > 0.5) return 'Light (0.5-5mm)';
+  return 'Dry / Minimal';
 }
 
 function normalizeBasinId(rawId: string): string {
@@ -107,20 +115,132 @@ export const MapViewer: React.FC<MapViewerProps> = ({
 }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
+  const popupRef = useRef<maplibregl.Popup | null>(null);
   const basinsGeoJsonRef = useRef<any>(null);
   const riversGeoJsonRef = useRef<any>(null);
   const [viewMode, setViewMode] = useState<'stations' | 'rainfall'>('stations');
 
+  // Dynamic state refs for mouse event callbacks
+  const stationsRef = useRef(stations);
+  const rainfallRef = useRef(rainfall);
+  const viewModeRef = useRef(viewMode);
+
+  useEffect(() => {
+    stationsRef.current = stations;
+    rainfallRef.current = rainfall;
+    viewModeRef.current = viewMode;
+  }, [stations, rainfall, viewMode]);
+
   // Callback to select the primary station of a given basin
   const handleBasinSelection = useCallback((basinId: string) => {
     const norm = normalizeBasinId(basinId);
-    const matching = stations.filter(s => (s.basin_id || normalizeBasinId(s.basin)) === norm);
+    const matching = stationsRef.current.filter(s => (s.basin_id || normalizeBasinId(s.basin)) === norm);
     if (matching.length === 0) return;
 
     // Pick station with highest severity or first
     const sorted = [...matching].sort((a, b) => (SEVERITY_WEIGHT[b.status] || 0) - (SEVERITY_WEIGHT[a.status] || 0));
     onSelectStation(sorted[0]);
-  }, [stations, onSelectStation]);
+  }, [onSelectStation]);
+
+  // Render HTML tooltip card for a hovered region/river
+  const buildHoverPopupHtml = useCallback((basinId: string, basinNameFallback: string) => {
+    const norm = normalizeBasinId(basinId);
+    const currentStations = stationsRef.current;
+    const currentRainfall = rainfallRef.current;
+    const currentMode = viewModeRef.current;
+
+    const basinStations = currentStations.filter(s => (s.basin_id || normalizeBasinId(s.basin)) === norm);
+    const rain = currentRainfall?.find(r => normalizeBasinId(r.basin_id) === norm);
+    const basinName = basinStations[0]?.basin || rain?.basin_name || basinNameFallback || 'River Basin';
+    const worstStatus = computeBasinWorstStatus(norm, currentStations);
+
+    let statusBadgeColor = 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40';
+    if (worstStatus === 'MAJOR_FLOOD') statusBadgeColor = 'bg-rose-500/20 text-rose-300 border-rose-500/50';
+    else if (worstStatus === 'MINOR_FLOOD') statusBadgeColor = 'bg-orange-500/20 text-orange-300 border-orange-500/50';
+    else if (worstStatus === 'ALERT') statusBadgeColor = 'bg-amber-500/20 text-amber-300 border-amber-500/50';
+
+    if (currentMode === 'rainfall') {
+      const mm = rain?.precipitation_mm ?? 0;
+      return `
+        <div class="bg-slate-900/95 backdrop-blur-md border border-slate-700/80 rounded-lg p-2.5 shadow-2xl font-mono text-[11px] text-slate-200 min-w-[210px] pointer-events-none">
+          <div class="flex items-center justify-between gap-2 border-b border-slate-800 pb-1.5 mb-2">
+            <strong class="text-slate-100 text-xs">${basinName}</strong>
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase border bg-blue-500/20 text-blue-300 border-blue-500/40">
+              Rainfall
+            </span>
+          </div>
+          <div class="space-y-1">
+            <div class="flex items-center justify-between">
+              <span class="text-slate-400">Precipitation:</span>
+              <strong class="text-cyan-300 text-xs">${mm.toFixed(1)} mm/h</strong>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-slate-400">Classification:</span>
+              <span class="text-slate-300">${getRainfallLabel(mm)}</span>
+            </div>
+            ${rain?.observed_at ? `
+              <div class="text-[9px] text-slate-500 pt-1 border-t border-slate-800/80">
+                Synced: ${new Date(rain.observed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </div>
+            ` : ''}
+          </div>
+          <div class="mt-2 text-[9px] text-cyan-400/80 text-center bg-cyan-950/40 py-0.5 rounded border border-cyan-800/30">
+            🖱 Click to inspect hydrograph
+          </div>
+        </div>
+      `;
+    }
+
+    // Stations & Water Level Telemetry View
+    return `
+      <div class="bg-slate-900/95 backdrop-blur-md border border-slate-700/80 rounded-lg p-2.5 shadow-2xl font-mono text-[11px] text-slate-200 min-w-[240px] max-w-[290px] pointer-events-none">
+        <div class="flex items-center justify-between gap-2 border-b border-slate-800 pb-1.5 mb-2">
+          <strong class="text-slate-100 text-xs truncate">${basinName}</strong>
+          <span class="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase border ${statusBadgeColor} shrink-0">
+            ${worstStatus.replace('_', ' ')}
+          </span>
+        </div>
+
+        <div class="space-y-1.5 max-h-[140px] overflow-hidden">
+          ${basinStations.length === 0 ? `
+            <div class="text-slate-400 text-[10px] italic">No active gauges in basin</div>
+          ` : basinStations.slice(0, 3).map(st => {
+            let lvlColor = 'text-emerald-400';
+            if (st.status === 'MAJOR_FLOOD') lvlColor = 'text-rose-400 font-bold';
+            else if (st.status === 'MINOR_FLOOD') lvlColor = 'text-orange-400 font-bold';
+            else if (st.status === 'ALERT') lvlColor = 'text-amber-400 font-bold';
+
+            const rocArrow = st.rate_of_change > 0 ? '▲' : st.rate_of_change < 0 ? '▼' : '─';
+            const rocColor = st.rate_of_change > 0 ? 'text-rose-400' : st.rate_of_change < 0 ? 'text-emerald-400' : 'text-slate-400';
+
+            return `
+              <div class="flex items-center justify-between gap-2 text-[10px] border-b border-slate-800/60 pb-1">
+                <span class="text-slate-300 truncate max-w-[130px]">${st.name.replace(/\(.*?\)/g, '')}</span>
+                <div class="flex items-center gap-1.5 shrink-0">
+                  <span class="${lvlColor}">${st.current_level !== null ? st.current_level.toFixed(2) + 'm' : 'N/A'}</span>
+                  <span class="${rocColor} text-[9px]">${rocArrow} ${Math.abs(st.rate_of_change).toFixed(2)}</span>
+                </div>
+              </div>
+            `;
+          }).join('')}
+          ${basinStations.length > 3 ? `
+            <div class="text-[9px] text-slate-400 text-right">+${basinStations.length - 3} more stations</div>
+          ` : ''}
+        </div>
+
+        ${basinStations[0]?.catchment ? `
+          <div class="mt-1.5 pt-1 border-t border-slate-800 flex items-center justify-between text-[9px] text-slate-400">
+            <span>Soil Saturation: <strong class="text-slate-200">${(basinStations[0].catchment.soil_moisture_0_to_7cm * 100).toFixed(0)}%</strong></span>
+            <span>Runoff: <strong class="text-slate-200">${basinStations[0].catchment.surface_runoff_risk.toFixed(1)}</strong></span>
+          </div>
+        ` : ''}
+
+        <div class="mt-2 text-[9px] text-cyan-400/90 text-center bg-cyan-950/40 py-0.5 rounded border border-cyan-800/40">
+          🖱 Click to open station telemetry
+        </div>
+      </div>
+    `;
+  }, []);
 
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
@@ -134,6 +254,14 @@ export const MapViewer: React.FC<MapViewerProps> = ({
     });
 
     map.current.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+
+    const popup = new maplibregl.Popup({
+      closeButton: false,
+      closeOnClick: false,
+      offset: 12,
+      className: 'floodwatch-hover-popup'
+    });
+    popupRef.current = popup;
 
     map.current.on('load', async () => {
       const currentMap = map.current;
@@ -151,8 +279,8 @@ export const MapViewer: React.FC<MapViewerProps> = ({
         basinsGeoJsonRef.current = basinsData;
         riversGeoJsonRef.current = riversData;
 
-        const styledBasins = applyBasinStyling(basinsData, stations, rainfall, viewMode);
-        const styledRivers = applyRiverStyling(riversData, stations);
+        const styledBasins = applyBasinStyling(basinsData, stationsRef.current, rainfallRef.current, viewModeRef.current);
+        const styledRivers = applyRiverStyling(riversData, stationsRef.current);
 
         // 1. BASINS SOURCE & LAYERS
         currentMap.addSource('sl-basins', {
@@ -188,7 +316,6 @@ export const MapViewer: React.FC<MapViewerProps> = ({
           data: styledRivers
         });
 
-        // Layer 1: Rivers Glow (Wide blurred line)
         currentMap.addLayer({
           id: 'rivers-glow',
           type: 'line',
@@ -210,7 +337,6 @@ export const MapViewer: React.FC<MapViewerProps> = ({
           }
         });
 
-        // Layer 2: Rivers Core (Crisp inner line, clickable)
         currentMap.addLayer({
           id: 'rivers-core',
           type: 'line',
@@ -231,7 +357,7 @@ export const MapViewer: React.FC<MapViewerProps> = ({
           }
         });
 
-        // 3. INTERACTION: CLICK & HOVER
+        // 3. INTERACTIVE CLICKS
         currentMap.on('click', 'rivers-core', (e) => {
           if (!e.features || e.features.length === 0) return;
           const feat = e.features[0];
@@ -253,17 +379,33 @@ export const MapViewer: React.FC<MapViewerProps> = ({
           if (bId) handleBasinSelection(bId);
         });
 
-        const setPointer = () => {
-          if (map.current) map.current.getCanvas().style.cursor = 'pointer';
-        };
-        const resetPointer = () => {
-          if (map.current) map.current.getCanvas().style.cursor = '';
+        // 4. HOVER POPUP BEHAVIOR
+        const handleFeatureMouseMove = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
+          if (!map.current || !popupRef.current) return;
+          map.current.getCanvas().style.cursor = 'pointer';
+
+          if (e.features && e.features.length > 0) {
+            const feat = e.features[0];
+            const basinId = feat.properties?.river_id || feat.properties?.id || '';
+            const basinName = feat.properties?.basin_name || feat.properties?.name || '';
+            const html = buildHoverPopupHtml(basinId, basinName);
+
+            popupRef.current
+              .setLngLat(e.lngLat)
+              .setHTML(html)
+              .addTo(map.current);
+          }
         };
 
-        currentMap.on('mouseenter', 'rivers-core', setPointer);
-        currentMap.on('mouseleave', 'rivers-core', resetPointer);
-        currentMap.on('mouseenter', 'basins-fill', setPointer);
-        currentMap.on('mouseleave', 'basins-fill', resetPointer);
+        const handleFeatureMouseLeave = () => {
+          if (map.current) map.current.getCanvas().style.cursor = '';
+          if (popupRef.current) popupRef.current.remove();
+        };
+
+        currentMap.on('mousemove', 'rivers-core', handleFeatureMouseMove);
+        currentMap.on('mouseleave', 'rivers-core', handleFeatureMouseLeave);
+        currentMap.on('mousemove', 'basins-fill', handleFeatureMouseMove);
+        currentMap.on('mouseleave', 'basins-fill', handleFeatureMouseLeave);
 
       } catch (err) {
         console.warn('Failed initializing map layers:', err);
@@ -271,14 +413,18 @@ export const MapViewer: React.FC<MapViewerProps> = ({
     });
 
     return () => {
+      if (popupRef.current) {
+        popupRef.current.remove();
+        popupRef.current = null;
+      }
       if (map.current) {
         map.current.remove();
         map.current = null;
       }
     };
-  }, [handleBasinSelection]);
+  }, [handleBasinSelection, buildHoverPopupHtml]);
 
-  // Update dynamic colors and data when stations or rainfall update
+  // Update dynamic colors and data when stations, rainfall, or viewMode update
   useEffect(() => {
     const currentMap = map.current;
     if (!currentMap) return;
@@ -337,7 +483,7 @@ export const MapViewer: React.FC<MapViewerProps> = ({
       </div>
 
       {/* Legend */}
-      <div className="absolute top-2.5 left-2.5 md:top-3 md:left-3 bg-slate-900/90 backdrop-blur border border-slate-800 rounded-lg p-2 md:p-2.5 text-[10px] md:text-xs text-slate-300 space-y-1 z-10 font-mono shadow-xl max-w-[130px] md:max-w-none">
+      <div className="absolute top-2.5 left-2.5 md:top-3 md:left-3 bg-slate-900/90 backdrop-blur border border-slate-800 rounded-lg p-2 md:p-2.5 text-[10px] md:text-xs text-slate-300 space-y-1 z-10 font-mono shadow-xl max-w-[130px] md:max-w-none pointer-events-none">
         {viewMode === 'stations' ? (
           <>
             <div className="font-bold text-slate-100 uppercase tracking-wider text-[9px] md:text-[10px] mb-0.5">River Glow Telemetry</div>
