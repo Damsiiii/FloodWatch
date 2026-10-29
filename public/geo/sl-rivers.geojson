@@ -1,0 +1,487 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "river_id": "basin_kelani",
+        "name": "Kelani River",
+        "reach": "Mainstem",
+        "basin_name": "Kelani Ganga"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            80.58,
+            6.84
+          ],
+          [
+            80.52,
+            6.87
+          ],
+          [
+            80.45,
+            6.93
+          ],
+          [
+            80.412,
+            6.993
+          ],
+          [
+            80.35,
+            7.02
+          ],
+          [
+            80.26,
+            7
+          ],
+          [
+            80.201,
+            6.957
+          ],
+          [
+            80.14,
+            6.93
+          ],
+          [
+            80.083,
+            6.901
+          ],
+          [
+            80.01,
+            6.92
+          ],
+          [
+            79.96,
+            6.94
+          ],
+          [
+            79.915,
+            6.948
+          ],
+          [
+            79.882,
+            6.953
+          ],
+          [
+            79.865,
+            6.98
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "river_id": "basin_kelani",
+        "name": "Gurugoda Oya (Kelani Tributary)",
+        "reach": "Tributary",
+        "basin_name": "Kelani Ganga"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            80.258,
+            7.185
+          ],
+          [
+            80.24,
+            7.1
+          ],
+          [
+            80.26,
+            7
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "river_id": "basin_kalu",
+        "name": "Kalu River",
+        "reach": "Mainstem",
+        "basin_name": "Kalu Ganga"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            80.68,
+            6.64
+          ],
+          [
+            80.55,
+            6.65
+          ],
+          [
+            80.4,
+            6.68
+          ],
+          [
+            80.32,
+            6.69
+          ],
+          [
+            80.25,
+            6.7
+          ],
+          [
+            80.19,
+            6.64
+          ],
+          [
+            80.11,
+            6.6
+          ],
+          [
+            80.04,
+            6.59
+          ],
+          [
+            79.96,
+            6.582
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "river_id": "basin_kalu",
+        "name": "Maguru Ganga (Kalu Tributary)",
+        "reach": "Tributary",
+        "basin_name": "Kalu Ganga"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            80.35,
+            6.5
+          ],
+          [
+            80.26,
+            6.57
+          ],
+          [
+            80.19,
+            6.64
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "river_id": "basin_gin",
+        "name": "Gin River",
+        "reach": "Mainstem",
+        "basin_name": "Gin Ganga"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            80.52,
+            6.42
+          ],
+          [
+            80.44,
+            6.36
+          ],
+          [
+            80.36,
+            6.32
+          ],
+          [
+            80.3,
+            6.25
+          ],
+          [
+            80.26,
+            6.18
+          ],
+          [
+            80.22,
+            6.12
+          ],
+          [
+            80.18,
+            6.06
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "river_id": "basin_nilwala",
+        "name": "Nilwala River",
+        "reach": "Mainstem",
+        "basin_name": "Nilwala Ganga"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            80.6,
+            6.35
+          ],
+          [
+            80.55,
+            6.26
+          ],
+          [
+            80.48,
+            6.18
+          ],
+          [
+            80.49,
+            6.11
+          ],
+          [
+            80.52,
+            6.03
+          ],
+          [
+            80.545,
+            5.94
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "river_id": "basin_attanagalu",
+        "name": "Attanagalu Oya / Ja-Ela",
+        "reach": "Mainstem",
+        "basin_name": "Attanagalu Oya"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            80.24,
+            7.18
+          ],
+          [
+            80.15,
+            7.14
+          ],
+          [
+            80.08,
+            7.12
+          ],
+          [
+            80,
+            7.09
+          ],
+          [
+            79.94,
+            7.08
+          ],
+          [
+            79.89,
+            7.08
+          ],
+          [
+            79.87,
+            7.15
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "river_id": "basin_maha",
+        "name": "Maha Oya",
+        "reach": "Mainstem",
+        "basin_name": "Maha Oya"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            80.48,
+            7.22
+          ],
+          [
+            80.38,
+            7.28
+          ],
+          [
+            80.27,
+            7.3
+          ],
+          [
+            80.15,
+            7.32
+          ],
+          [
+            80.02,
+            7.3
+          ],
+          [
+            79.91,
+            7.28
+          ],
+          [
+            79.84,
+            7.27
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "river_id": "basin_deduru",
+        "name": "Deduru Oya",
+        "reach": "Mainstem",
+        "basin_name": "Deduru Oya"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            80.52,
+            7.5
+          ],
+          [
+            80.4,
+            7.56
+          ],
+          [
+            80.28,
+            7.62
+          ],
+          [
+            80.14,
+            7.6
+          ],
+          [
+            79.98,
+            7.59
+          ],
+          [
+            79.86,
+            7.6
+          ],
+          [
+            79.79,
+            7.61
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "river_id": "basin_mahaweli",
+        "name": "Mahaweli River",
+        "reach": "Mainstem",
+        "basin_name": "Mahaweli Ganga"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            80.75,
+            6.85
+          ],
+          [
+            80.64,
+            6.98
+          ],
+          [
+            80.6,
+            7.26
+          ],
+          [
+            80.62,
+            7.32
+          ],
+          [
+            80.76,
+            7.3
+          ],
+          [
+            80.84,
+            7.36
+          ],
+          [
+            80.95,
+            7.42
+          ],
+          [
+            81.02,
+            7.68
+          ],
+          [
+            81.08,
+            7.92
+          ],
+          [
+            81.1,
+            8.1
+          ],
+          [
+            81.14,
+            8.25
+          ],
+          [
+            81.2,
+            8.38
+          ],
+          [
+            81.28,
+            8.45
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "river_id": "basin_walawe",
+        "name": "Walawe River",
+        "reach": "Mainstem",
+        "basin_name": "Walawe River"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            80.82,
+            6.72
+          ],
+          [
+            80.84,
+            6.6
+          ],
+          [
+            80.87,
+            6.45
+          ],
+          [
+            80.92,
+            6.3
+          ],
+          [
+            80.98,
+            6.18
+          ],
+          [
+            81.01,
+            6.1
+          ]
+        ]
+      }
+    }
+  ]
+}

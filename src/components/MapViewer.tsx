@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
-import { StationSnapshot, BasinRainfallSnapshot } from '../types/hydrology';
+import { StationSnapshot, BasinRainfallSnapshot, AlertSeverityLevel } from '../types/hydrology';
 import { CloudRain, Waves } from 'lucide-react';
 
 interface MapViewerProps {
@@ -20,12 +20,12 @@ const SEVERITY_WEIGHT: Record<string, number> = {
   STALE: 0
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  MAJOR_FLOOD: '#ef4444',
-  MINOR_FLOOD: '#f97316',
-  ALERT: '#f59e0b',
-  NORMAL: '#10b981',
-  STALE: '#64748b'
+const RIVER_STATUS_COLORS: Record<string, string> = {
+  MAJOR_FLOOD: '#ef4444', // Red glow
+  MINOR_FLOOD: '#f97316', // Orange glow
+  ALERT: '#eab308',       // Amber glow
+  NORMAL: '#0ea5e9',      // Cyan neon glow
+  STALE: '#0284c7'
 };
 
 function getRainfallColor(mm: number): string {
@@ -36,47 +36,64 @@ function getRainfallColor(mm: number): string {
   return '#64748b';
 }
 
-function getRainfallLabel(mm: number): string {
-  if (mm >= 30) return 'Extreme (>30mm)';
-  if (mm >= 15) return 'Heavy (15-30mm)';
-  if (mm >= 5)  return 'Moderate (5-15mm)';
-  if (mm > 0.5) return 'Light (0.5-5mm)';
-  return 'Dry / Minimal';
+function normalizeBasinId(rawId: string): string {
+  if (!rawId) return 'basin_kelani';
+  if (rawId.startsWith('basin_')) return rawId;
+  return `basin_${rawId.toLowerCase()}`;
+}
+
+function computeBasinWorstStatus(basinId: string, currentStations: StationSnapshot[]): string {
+  const normTarget = normalizeBasinId(basinId);
+  const basinStations = currentStations.filter((s) => {
+    const sBasinId = s.basin_id || normalizeBasinId(s.basin.split(' ')[0]);
+    return sBasinId === normTarget;
+  });
+
+  let worstStatus = 'NORMAL';
+  let maxWeight = 1;
+
+  basinStations.forEach((s) => {
+    const weight = SEVERITY_WEIGHT[s.status] || 0;
+    if (weight > maxWeight) {
+      maxWeight = weight;
+      worstStatus = s.status;
+    }
+  });
+
+  return worstStatus;
 }
 
 function applyBasinStyling(geojson: any, currentStations: StationSnapshot[], rainfallList: BasinRainfallSnapshot[] | undefined, mode: 'stations' | 'rainfall') {
   if (!geojson?.features) return geojson;
 
   geojson.features.forEach((f: any) => {
-    const basinId = f.properties.id;
+    const basinId = normalizeBasinId(f.properties.id);
 
     if (mode === 'rainfall') {
-      const rain = rainfallList?.find(r => r.basin_id === basinId);
+      const rain = rainfallList?.find(r => normalizeBasinId(r.basin_id) === basinId);
       const mm = rain?.precipitation_mm ?? 0;
       f.properties.color = getRainfallColor(mm);
       f.properties.status = mm >= 30 ? 'CRITICAL_RAIN' : 'NORMAL';
       f.properties.rain_mm = mm;
     } else {
-      const basinStations = currentStations.filter((s) => {
-        const bLower = s.basin.toLowerCase();
-        if (basinId === 'maha') return bLower === 'maha oya';
-        return bLower.includes(basinId);
-      });
-
-      let worstStatus = 'NORMAL';
-      let maxWeight = 1;
-
-      basinStations.forEach((s) => {
-        const weight = SEVERITY_WEIGHT[s.status] || 0;
-        if (weight > maxWeight) {
-          maxWeight = weight;
-          worstStatus = s.status;
-        }
-      });
-
-      f.properties.color = STATUS_COLORS[worstStatus];
+      const worstStatus = computeBasinWorstStatus(basinId, currentStations);
+      f.properties.color = RIVER_STATUS_COLORS[worstStatus] || '#0ea5e9';
       f.properties.status = worstStatus;
     }
+  });
+
+  return geojson;
+}
+
+function applyRiverStyling(geojson: any, currentStations: StationSnapshot[]) {
+  if (!geojson?.features) return geojson;
+
+  geojson.features.forEach((f: any) => {
+    const riverId = normalizeBasinId(f.properties.river_id || f.properties.id);
+    const worstStatus = computeBasinWorstStatus(riverId, currentStations);
+
+    f.properties.color = RIVER_STATUS_COLORS[worstStatus] || '#0ea5e9';
+    f.properties.status = worstStatus;
   });
 
   return geojson;
@@ -90,10 +107,20 @@ export const MapViewer: React.FC<MapViewerProps> = ({
 }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
-  const markersRef = useRef<{ [id: string]: maplibregl.Marker }>({});
-  const rainMarkersRef = useRef<maplibregl.Marker[]>([]);
   const basinsGeoJsonRef = useRef<any>(null);
+  const riversGeoJsonRef = useRef<any>(null);
   const [viewMode, setViewMode] = useState<'stations' | 'rainfall'>('stations');
+
+  // Callback to select the primary station of a given basin
+  const handleBasinSelection = useCallback((basinId: string) => {
+    const norm = normalizeBasinId(basinId);
+    const matching = stations.filter(s => (s.basin_id || normalizeBasinId(s.basin)) === norm);
+    if (matching.length === 0) return;
+
+    // Pick station with highest severity or first
+    const sorted = [...matching].sort((a, b) => (SEVERITY_WEIGHT[b.status] || 0) - (SEVERITY_WEIGHT[a.status] || 0));
+    onSelectStation(sorted[0]);
+  }, [stations, onSelectStation]);
 
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
@@ -101,51 +128,146 @@ export const MapViewer: React.FC<MapViewerProps> = ({
     map.current = new maplibregl.Map({
       container: mapContainer.current,
       style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
-      center: [80.7718, 7.8731],
-      zoom: 7.0,
+      center: [80.7718, 7.6000],
+      zoom: 7.3,
       attributionControl: false
     });
 
     map.current.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
 
-    map.current.on('load', () => {
+    map.current.on('load', async () => {
       const currentMap = map.current;
       if (!currentMap) return;
 
-      fetch('/geo/sl-basins.json')
-        .then((res) => res.json())
-        .then((geojson) => {
-          if (!map.current) return;
-          basinsGeoJsonRef.current = geojson;
-          const styledGeoJson = applyBasinStyling(geojson, stations, rainfall, viewMode);
+      try {
+        const [basinsRes, riversRes] = await Promise.all([
+          fetch('/geo/sl-basins.json'),
+          fetch('/geo/sl-rivers.geojson')
+        ]);
 
-          map.current.addSource('sl-basins', {
-            type: 'geojson',
-            data: styledGeoJson
-          });
+        const basinsData = await basinsRes.json();
+        const riversData = await riversRes.json();
 
-          map.current.addLayer({
-            id: 'basins-fill',
-            type: 'fill',
-            source: 'sl-basins',
-            paint: {
-              'fill-color': ['get', 'color'],
-              'fill-opacity': ['case', ['==', ['get', 'status'], 'MAJOR_FLOOD'], 0.22, 0.12]
-            }
-          });
+        basinsGeoJsonRef.current = basinsData;
+        riversGeoJsonRef.current = riversData;
 
-          map.current.addLayer({
-            id: 'basins-outline',
-            type: 'line',
-            source: 'sl-basins',
-            paint: {
-              'line-color': ['get', 'color'],
-              'line-width': ['case', ['==', ['get', 'status'], 'MAJOR_FLOOD'], 2.5, 1.5],
-              'line-dasharray': [2, 2]
-            }
-          });
-        })
-        .catch((err) => console.warn('Failed loading basin geojson:', err));
+        const styledBasins = applyBasinStyling(basinsData, stations, rainfall, viewMode);
+        const styledRivers = applyRiverStyling(riversData, stations);
+
+        // 1. BASINS SOURCE & LAYERS
+        currentMap.addSource('sl-basins', {
+          type: 'geojson',
+          data: styledBasins
+        });
+
+        currentMap.addLayer({
+          id: 'basins-fill',
+          type: 'fill',
+          source: 'sl-basins',
+          paint: {
+            'fill-color': ['get', 'color'],
+            'fill-opacity': ['case', ['==', ['get', 'status'], 'MAJOR_FLOOD'], 0.22, 0.10]
+          }
+        });
+
+        currentMap.addLayer({
+          id: 'basins-outline',
+          type: 'line',
+          source: 'sl-basins',
+          paint: {
+            'line-color': ['get', 'color'],
+            'line-width': ['case', ['==', ['get', 'status'], 'MAJOR_FLOOD'], 2.5, 1.2],
+            'line-dasharray': [3, 2],
+            'line-opacity': 0.7
+          }
+        });
+
+        // 2. RIVERS SOURCE & DUAL-LAYER NEON STYLING
+        currentMap.addSource('sl-rivers', {
+          type: 'geojson',
+          data: styledRivers
+        });
+
+        // Layer 1: Rivers Glow (Wide blurred line)
+        currentMap.addLayer({
+          id: 'rivers-glow',
+          type: 'line',
+          source: 'sl-rivers',
+          layout: {
+            'line-join': 'round',
+            'line-cap': 'round'
+          },
+          paint: {
+            'line-color': ['get', 'color'],
+            'line-width': [
+              'interpolate', ['linear'], ['zoom'],
+              6, 6,
+              9, 12,
+              12, 18
+            ],
+            'line-blur': 6,
+            'line-opacity': 0.65
+          }
+        });
+
+        // Layer 2: Rivers Core (Crisp inner line, clickable)
+        currentMap.addLayer({
+          id: 'rivers-core',
+          type: 'line',
+          source: 'sl-rivers',
+          layout: {
+            'line-join': 'round',
+            'line-cap': 'round'
+          },
+          paint: {
+            'line-color': ['case', ['==', ['get', 'status'], 'NORMAL'], '#38bdf8', ['get', 'color']],
+            'line-width': [
+              'interpolate', ['linear'], ['zoom'],
+              6, 2.0,
+              9, 3.5,
+              12, 5.0
+            ],
+            'line-opacity': 0.95
+          }
+        });
+
+        // 3. INTERACTION: CLICK & HOVER
+        currentMap.on('click', 'rivers-core', (e) => {
+          if (!e.features || e.features.length === 0) return;
+          const feat = e.features[0];
+          const rId = feat.properties?.river_id || feat.properties?.id;
+          if (rId) handleBasinSelection(rId);
+        });
+
+        currentMap.on('click', 'rivers-glow', (e) => {
+          if (!e.features || e.features.length === 0) return;
+          const feat = e.features[0];
+          const rId = feat.properties?.river_id || feat.properties?.id;
+          if (rId) handleBasinSelection(rId);
+        });
+
+        currentMap.on('click', 'basins-fill', (e) => {
+          if (!e.features || e.features.length === 0) return;
+          const feat = e.features[0];
+          const bId = feat.properties?.id;
+          if (bId) handleBasinSelection(bId);
+        });
+
+        const setPointer = () => {
+          if (map.current) map.current.getCanvas().style.cursor = 'pointer';
+        };
+        const resetPointer = () => {
+          if (map.current) map.current.getCanvas().style.cursor = '';
+        };
+
+        currentMap.on('mouseenter', 'rivers-core', setPointer);
+        currentMap.on('mouseleave', 'rivers-core', resetPointer);
+        currentMap.on('mouseenter', 'basins-fill', setPointer);
+        currentMap.on('mouseleave', 'basins-fill', resetPointer);
+
+      } catch (err) {
+        console.warn('Failed initializing map layers:', err);
+      }
     });
 
     return () => {
@@ -154,101 +276,34 @@ export const MapViewer: React.FC<MapViewerProps> = ({
         map.current = null;
       }
     };
-  }, []);
+  }, [handleBasinSelection]);
 
+  // Update dynamic colors and data when stations or rainfall update
   useEffect(() => {
     const currentMap = map.current;
     if (!currentMap) return;
 
     if (basinsGeoJsonRef.current && currentMap.getSource('sl-basins')) {
-      const updated = applyBasinStyling(basinsGeoJsonRef.current, stations, rainfall, viewMode);
-      (currentMap.getSource('sl-basins') as maplibregl.GeoJSONSource).setData(updated);
+      const updatedBasins = applyBasinStyling(basinsGeoJsonRef.current, stations, rainfall, viewMode);
+      (currentMap.getSource('sl-basins') as maplibregl.GeoJSONSource).setData(updatedBasins);
     }
 
-    Object.values(markersRef.current).forEach(m => m.remove());
-    markersRef.current = {};
-    rainMarkersRef.current.forEach(m => m.remove());
-    rainMarkersRef.current = [];
-
-    if (viewMode === 'stations') {
-      stations.forEach((station) => {
-        const el = document.createElement('div');
-        el.className = 'group cursor-pointer';
-
-        let colorClass = 'bg-emerald-500 border-emerald-300 shadow-emerald-500/50';
-        if (station.status === 'MAJOR_FLOOD') {
-          colorClass = 'bg-rose-500 border-rose-300 shadow-rose-500/50 animate-bounce';
-        } else if (station.status === 'MINOR_FLOOD') {
-          colorClass = 'bg-orange-500 border-orange-300 shadow-orange-500/50';
-        } else if (station.status === 'ALERT') {
-          colorClass = 'bg-amber-500 border-amber-300 shadow-amber-500/50';
-        } else if (station.status === 'STALE') {
-          colorClass = 'bg-slate-500 border-slate-400 border-dashed';
-        }
-
-        const isSelected = selectedStation?.id === station.id;
-
-        el.innerHTML = `
-          <div class="relative">
-            <div class="w-5 h-5 md:w-6 md:h-6 rounded-full border-2 ${colorClass} shadow-lg transition-transform ${isSelected ? 'scale-125 ring-4 ring-cyan-400' : 'hover:scale-110'} flex items-center justify-center">
-              <span class="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-white"></span>
-            </div>
-            <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-slate-900/95 border border-slate-700 text-slate-100 text-[11px] font-mono px-2.5 py-1 rounded shadow-xl whitespace-nowrap z-50">
-              <strong>${station.name}</strong> (${station.current_level !== null ? station.current_level.toFixed(2) + 'm' : 'N/A'})
-              <div class="text-[9px] text-slate-400 mt-0.5">Synced: ${new Date(station.last_updated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-            </div>
-          </div>
-        `;
-
-        el.addEventListener('click', () => {
-          onSelectStation(station);
-        });
-
-        const marker = new maplibregl.Marker({ element: el })
-          .setLngLat([station.lng, station.lat])
-          .addTo(currentMap);
-
-        markersRef.current[station.id] = marker;
-      });
-    } else {
-      (rainfall || []).forEach((rain) => {
-        const el = document.createElement('div');
-        el.className = 'group cursor-pointer';
-
-        const color = getRainfallColor(rain.precipitation_mm);
-
-        el.innerHTML = `
-          <div class="relative flex items-center justify-center">
-            <div class="px-2 py-0.5 md:px-2.5 md:py-1 rounded-full border border-slate-700/80 bg-slate-900/90 shadow-2xl backdrop-blur flex items-center gap-1.5 font-mono text-[11px] md:text-xs hover:scale-110 transition-transform">
-              <span class="w-2 h-2 rounded-full" style="background-color: ${color}"></span>
-              <strong class="text-slate-200">${rain.precipitation_mm.toFixed(1)}</strong>
-              <span class="text-[9px] md:text-[10px] text-slate-400">mm/h</span>
-            </div>
-            <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-slate-900/95 border border-slate-700 text-slate-100 text-[11px] font-mono px-2.5 py-1 rounded shadow-xl whitespace-nowrap z-50">
-              <strong>${rain.basin_name} Basin</strong>
-              <div class="text-[10px] text-cyan-400 mt-0.5">Rain: ${rain.precipitation_mm.toFixed(2)} mm/hr (${getRainfallLabel(rain.precipitation_mm)})</div>
-            </div>
-          </div>
-        `;
-
-        const marker = new maplibregl.Marker({ element: el })
-          .setLngLat([rain.lng, rain.lat])
-          .addTo(currentMap);
-
-        rainMarkersRef.current.push(marker);
-      });
+    if (riversGeoJsonRef.current && currentMap.getSource('sl-rivers')) {
+      const updatedRivers = applyRiverStyling(riversGeoJsonRef.current, stations);
+      (currentMap.getSource('sl-rivers') as maplibregl.GeoJSONSource).setData(updatedRivers);
     }
-  }, [stations, rainfall, viewMode, selectedStation, onSelectStation]);
+  }, [stations, rainfall, viewMode]);
 
+  // Smooth camera fly-to when station is selected
   useEffect(() => {
-    if (selectedStation && map.current && viewMode === 'stations') {
+    if (selectedStation && map.current) {
       map.current.flyTo({
         center: [selectedStation.lng, selectedStation.lat],
-        zoom: 9.5,
+        zoom: 9.0,
         duration: 1200
       });
     }
-  }, [selectedStation, viewMode]);
+  }, [selectedStation]);
 
   return (
     <div className="relative w-full h-full min-h-[350px]">
@@ -264,8 +319,8 @@ export const MapViewer: React.FC<MapViewerProps> = ({
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
-          <Waves className="w-3 h-3 md:w-3.5 md:h-3.5" />
-          <span>Rivers ({stations.length})</span>
+          <Waves className="w-3 h-3 md:w-3.5 md:h-3.5 text-cyan-400" />
+          <span>Vector Rivers</span>
         </button>
 
         <button
@@ -277,19 +332,19 @@ export const MapViewer: React.FC<MapViewerProps> = ({
           }`}
         >
           <CloudRain className="w-3 h-3 md:w-3.5 md:h-3.5" />
-          <span>Rainfall</span>
+          <span>Rainfall Radar</span>
         </button>
       </div>
 
       {/* Legend */}
-      <div className="absolute top-2.5 left-2.5 md:top-3 md:left-3 bg-slate-900/90 backdrop-blur border border-slate-800 rounded-lg p-2 md:p-2.5 text-[10px] md:text-xs text-slate-300 space-y-1 z-10 font-mono shadow-xl max-w-[125px] md:max-w-none">
+      <div className="absolute top-2.5 left-2.5 md:top-3 md:left-3 bg-slate-900/90 backdrop-blur border border-slate-800 rounded-lg p-2 md:p-2.5 text-[10px] md:text-xs text-slate-300 space-y-1 z-10 font-mono shadow-xl max-w-[130px] md:max-w-none">
         {viewMode === 'stations' ? (
           <>
-            <div className="font-bold text-slate-100 uppercase tracking-wider text-[9px] md:text-[10px] mb-0.5">Critical Level</div>
-            <div className="flex items-center gap-1.5"><span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-full bg-rose-500 shrink-0"></span> Major Flood</div>
-            <div className="flex items-center gap-1.5"><span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-full bg-orange-500 shrink-0"></span> Minor Flood</div>
-            <div className="flex items-center gap-2 hidden sm:flex"><span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Alert Level</div>
-            <div className="flex items-center gap-1.5"><span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-full bg-emerald-500 shrink-0"></span> Normal</div>
+            <div className="font-bold text-slate-100 uppercase tracking-wider text-[9px] md:text-[10px] mb-0.5">River Glow Telemetry</div>
+            <div className="flex items-center gap-1.5"><span className="w-2.5 h-1 md:w-3 md:h-1 rounded-full bg-rose-500 shrink-0 shadow-[0_0_8px_#ef4444]"></span> Major Flood</div>
+            <div className="flex items-center gap-1.5"><span className="w-2.5 h-1 md:w-3 md:h-1 rounded-full bg-orange-500 shrink-0 shadow-[0_0_8px_#f97316]"></span> Minor Flood</div>
+            <div className="flex items-center gap-1.5"><span className="w-2.5 h-1 md:w-3 md:h-1 rounded-full bg-amber-500 shrink-0 shadow-[0_0_8px_#eab308]"></span> Alert Level</div>
+            <div className="flex items-center gap-1.5"><span className="w-2.5 h-1 md:w-3 md:h-1 rounded-full bg-cyan-400 shrink-0 shadow-[0_0_8px_#0ea5e9]"></span> Normal Flow</div>
           </>
         ) : (
           <>
