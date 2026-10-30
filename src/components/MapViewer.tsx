@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
 import { StationSnapshot, BasinRainfallSnapshot } from '../types/hydrology';
-import { CloudRain, Waves } from 'lucide-react';
+import { CloudRain, Waves, Satellite } from 'lucide-react';
 
 interface MapViewerProps {
   stations: StationSnapshot[];
@@ -129,6 +129,7 @@ export const MapViewer: React.FC<MapViewerProps> = ({
   const basinsGeoJsonRef = useRef<any>(null);
   const riversGeoJsonRef = useRef<any>(null);
   const [viewMode, setViewMode] = useState<'stations' | 'rainfall'>('stations');
+  const [showSatellite, setShowSatellite] = useState(false);
 
   // Dynamic state refs for event listeners
   const stationsRef = useRef(stations);
@@ -288,6 +289,28 @@ export const MapViewer: React.FC<MapViewerProps> = ({
         const styledBasins = applyBasinStyling(basinsData, stationsRef.current, rainfallRef.current, viewModeRef.current);
         const styledRivers = applyRiverStyling(riversData, stationsRef.current);
 
+        // 0. SATELLITE BASEMAP (ESRI World Imagery)
+        newMap.addSource('esri-satellite', {
+          type: 'raster',
+          tiles: [
+            'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+          ],
+          tileSize: 256,
+          maxzoom: 19
+        });
+
+        newMap.addLayer({
+          id: 'satellite-layer',
+          type: 'raster',
+          source: 'esri-satellite',
+          layout: {
+            visibility: 'none'
+          },
+          paint: {
+            'raster-opacity': 0.92
+          }
+        });
+
         // 1. BASINS SOURCE & LAYERS
         newMap.addSource('sl-basins', {
           type: 'geojson',
@@ -438,6 +461,20 @@ export const MapViewer: React.FC<MapViewerProps> = ({
     }
   }, [stations, rainfall, viewMode]);
 
+  // Toggle satellite imagery visibility
+  useEffect(() => {
+    if (!map.current) return;
+    try {
+      if (map.current.getLayer('satellite-layer')) {
+        map.current.setLayoutProperty(
+          'satellite-layer',
+          'visibility',
+          showSatellite ? 'visible' : 'none'
+        );
+      }
+    } catch (e) {}
+  }, [showSatellite]);
+
   // Smooth camera fly-to when station is selected
   useEffect(() => {
     if (selectedStation && map.current) {
@@ -477,6 +514,21 @@ export const MapViewer: React.FC<MapViewerProps> = ({
         >
           <CloudRain className="w-3 h-3 md:w-3.5 md:h-3.5" />
           <span>Rainfall Radar</span>
+        </button>
+
+        <div className="h-3.5 w-px bg-slate-800 mx-0.5" />
+
+        <button
+          onClick={() => setShowSatellite(prev => !prev)}
+          className={`flex items-center gap-1 px-2 py-1 rounded-md transition ${
+            showSatellite
+              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+          title="Toggle High-Resolution Satellite Map"
+        >
+          <Satellite className="w-3 h-3 md:w-3.5 md:h-3.5 text-amber-400" />
+          <span>Satellite</span>
         </button>
       </div>
 
