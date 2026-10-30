@@ -2,235 +2,269 @@ const fs = require('fs');
 const readline = require('readline');
 const path = require('path');
 
-const RIVERS_FILTER = [
+const BASIN_TARGETS = [
   {
     river_id: "basin_kelani",
     name: "Kelani River",
     basin_name: "Kelani Ganga",
+    mouthCoord: [79.8699168, 6.979135],
     regex: /kelani/i,
-    minLat: 6.85, maxLat: 7.20, minLng: 79.85, maxLng: 80.65
+    minLat: 6.80, maxLat: 7.20, minLng: 79.85, maxLng: 80.65,
+    maxGapMeters: 150
   },
   {
     river_id: "basin_kalu",
     name: "Kalu River",
     basin_name: "Kalu Ganga",
-    // Matches "Kalu Ganga", "Kaluganga", "Kalu River" and "Maguru Ganga"
-    regex: /kalu\s?ganga|kalu\s?river|maguru\s?ganga/i,
-    minLat: 6.45, maxLat: 6.85, minLng: 79.92, maxLng: 80.75
+    mouthCoord: [79.9560831, 6.5879253],
+    regex: /kalu/i,
+    minLat: 6.45, maxLat: 6.85, minLng: 79.92, maxLng: 80.75,
+    maxGapMeters: 150
   },
   {
     river_id: "basin_gin",
     name: "Gin River",
     basin_name: "Gin Ganga",
-    regex: /gin\s?ganga|gin\s?river/i,
-    minLat: 6.02, maxLat: 6.50, minLng: 80.15, maxLng: 80.60
+    mouthCoord: [80.1757228, 6.0598921],
+    regex: /gin/i,
+    minLat: 6.02, maxLat: 6.50, minLng: 80.15, maxLng: 80.60,
+    maxGapMeters: 150
   },
   {
     river_id: "basin_nilwala",
     name: "Nilwala River",
     basin_name: "Nilwala Ganga",
+    mouthCoord: [80.5381932, 5.9412594],
     regex: /nilwala/i,
-    minLat: 5.92, maxLat: 6.40, minLng: 80.40, maxLng: 80.75
+    minLat: 5.92, maxLat: 6.40, minLng: 80.40, maxLng: 80.75,
+    maxGapMeters: 150
   },
   {
     river_id: "basin_attanagalu",
     name: "Attanagalu Oya",
     basin_name: "Attanagalu Oya",
-    regex: /attanagalu|ja.?ela|dandugam/i,
-    minLat: 7.02, maxLat: 7.28, minLng: 79.85, maxLng: 80.30
+    mouthCoord: [79.8548148, 7.1068886],
+    regex: /dandugam|dadugan|attanagalu|attanagalla/i,
+    minLat: 7.00, maxLat: 7.28, minLng: 79.85, maxLng: 80.30,
+    maxGapMeters: 150
   },
   {
     river_id: "basin_maha",
     name: "Maha Oya",
     basin_name: "Maha Oya",
+    mouthCoord: [79.8427051, 7.2725642],
     regex: /maha\s?oya/i,
-    minLat: 7.15, maxLat: 7.45, minLng: 79.82, maxLng: 80.55
+    minLat: 7.05, maxLat: 7.45, minLng: 79.82, maxLng: 80.55,
+    maxGapMeters: 150
   },
   {
     river_id: "basin_deduru",
     name: "Deduru Oya",
     basin_name: "Deduru Oya",
-    regex: /deduru\s?oya/i,
-    minLat: 7.45, maxLat: 7.80, minLng: 79.75, maxLng: 80.65
+    mouthCoord: [79.7936, 7.6101],
+    regex: /deduru/i,
+    minLat: 7.45, maxLat: 7.80, minLng: 79.75, maxLng: 80.65,
+    maxGapMeters: 150
   },
   {
     river_id: "basin_mahaweli",
     name: "Mahaweli River",
     basin_name: "Mahaweli Ganga",
+    mouthCoord: [81.2301953, 8.4600612],
     regex: /mahaweli/i,
-    minLat: 6.80, maxLat: 8.55, minLng: 80.45, maxLng: 81.35
+    minLat: 6.80, maxLat: 8.55, minLng: 80.45, maxLng: 81.35,
+    maxGapMeters: 150
   },
   {
     river_id: "basin_walawe",
     name: "Walawe River",
     basin_name: "Walawe River",
+    mouthCoord: [81.0505561, 6.106648],
     regex: /walawe/i,
-    minLat: 6.05, maxLat: 6.78, minLng: 80.70, maxLng: 81.10
+    minLat: 6.05, maxLat: 6.78, minLng: 80.55, maxLng: 81.10,
+    maxGapMeters: 150
   }
 ];
 
-// Perpendicular distance squared between point p and segment (v, w)
-function sqDistToSegment(p, v, w) {
-  const l2 = (v[0] - w[0]) ** 2 + (v[1] - w[1]) ** 2;
-  if (l2 === 0) return (p[0] - v[0]) ** 2 + (p[1] - v[1]) ** 2;
-  let t = ((p[0] - v[0]) * (w[0] - v[0]) + (p[1] - v[1]) * (w[1] - v[1])) / l2;
-  t = Math.max(0, Math.min(1, t));
-  return (p[0] - (v[0] + t * (w[0] - v[0]))) ** 2 + (p[1] - (v[1] + t * (w[1] - v[1]))) ** 2;
-}
+async function run() {
+  console.log("Loading waterways.geojson...");
+  const rl = readline.createInterface({
+    input: fs.createReadStream('scripts/waterways.geojson', { encoding: 'utf8' }),
+    crlfDelay: Infinity
+  });
 
-// Douglas-Peucker simplification
-function simplifyPoints(points, sqTolerance = 0.0000003) {
-  if (points.length <= 2) return points;
-
-  let maxSqDist = 0;
-  let index = 0;
-  const last = points.length - 1;
-
-  for (let i = 1; i < last; i++) {
-    const sqDist = sqDistToSegment(points[i], points[0], points[last]);
-    if (sqDist > maxSqDist) {
-      maxSqDist = sqDist;
-      index = i;
-    }
-  }
-
-  if (maxSqDist > sqTolerance) {
-    const left = simplifyPoints(points.slice(0, index + 1), sqTolerance);
-    const right = simplifyPoints(points.slice(index), sqTolerance);
-    return left.slice(0, left.length - 1).concat(right);
-  } else {
-    return [points[0], points[last]];
-  }
-}
-
-// Stitch fragmented LineString segments into continuous ordered river flow lines
-function stitchSegments(segments) {
-  if (segments.length === 0) return [];
-
-  let pool = segments.map(s => s.map(pt => [Number(pt[0].toFixed(5)), Number(pt[1].toFixed(5))])).filter(s => s.length >= 2);
-  const chains = [];
-
-  while (pool.length > 0) {
-    let currentChain = pool.shift();
-    let extended = true;
-
-    while (extended) {
-      extended = false;
-      const head = currentChain[0];
-      const tail = currentChain[currentChain.length - 1];
-
-      for (let i = 0; i < pool.length; i++) {
-        const seg = pool[i];
-        const sHead = seg[0];
-        const sTail = seg[seg.length - 1];
-
-        const dTailToSHead = Math.hypot(tail[0] - sHead[0], tail[1] - sHead[1]);
-        const dTailToSTail = Math.hypot(tail[0] - sTail[0], tail[1] - sTail[1]);
-        const dHeadToSTail = Math.hypot(head[0] - sTail[0], head[1] - sTail[1]);
-        const dHeadToSHead = Math.hypot(head[0] - sHead[0], head[1] - sHead[1]);
-
-        const THRESHOLD = 0.05; // ~5km bridge/culvert gap tolerance
-
-        if (dTailToSHead < THRESHOLD) {
-          currentChain = currentChain.concat(seg.slice(1));
-          pool.splice(i, 1);
-          extended = true;
-          break;
-        } else if (dTailToSTail < THRESHOLD) {
-          currentChain = currentChain.concat(seg.slice().reverse().slice(1));
-          pool.splice(i, 1);
-          extended = true;
-          break;
-        } else if (dHeadToSTail < THRESHOLD) {
-          currentChain = seg.slice(0, -1).concat(currentChain);
-          pool.splice(i, 1);
-          extended = true;
-          break;
-        } else if (dHeadToSHead < THRESHOLD) {
-          currentChain = seg.slice().reverse().slice(0, -1).concat(currentChain);
-          pool.splice(i, 1);
-          extended = true;
-          break;
-        }
-      }
-    }
-
-    chains.push(currentChain);
-  }
-
-  chains.sort((a, b) => b.length - a.length);
-  return chains;
-}
-
-async function processWaterways() {
-  console.log("Reading waterways.geojson from HOTOSM with refined basin geographic filters...");
-  const riverBuckets = {};
-  RIVERS_FILTER.forEach(r => { riverBuckets[r.river_id] = []; });
-
-  const fileStream = fs.createReadStream('scripts/waterways.geojson', { encoding: 'utf8' });
-  const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
-
+  const allWays = [];
   for await (const line of rl) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith('{ "type": "Feature"')) continue;
-
-    let clean = trimmed;
+    if (!line.includes('"type": "Feature"')) continue;
+    let clean = line.trim();
     if (clean.endsWith(',')) clean = clean.slice(0, -1);
-
     try {
-      const feature = JSON.parse(clean);
-      const props = feature.properties || {};
-      const geom = feature.geometry;
-
-      if (!geom || geom.type !== 'LineString') continue;
-
-      const nameCombined = `${props.name || ''} ${props.name_en || ''} ${props.name_si || ''} ${props.name_ta || ''}`;
-      if (!nameCombined.trim()) continue;
-
-      for (const r of RIVERS_FILTER) {
-        if (r.regex.test(nameCombined)) {
-          // Bounding box filter to eliminate distant naming duplicates
-          const firstPt = geom.coordinates[0];
-          if (firstPt[0] >= r.minLng && firstPt[0] <= r.maxLng && firstPt[1] >= r.minLat && firstPt[1] <= r.maxLat) {
-            riverBuckets[r.river_id].push(geom.coordinates);
-            break;
-          }
-        }
+      const f = JSON.parse(clean);
+      if (f.geometry && f.geometry.type === 'LineString') {
+        const props = f.properties || {};
+        allWays.push({
+          id: props.id,
+          name: props.name || '',
+          name_en: props.name_en || '',
+          waterway: props.waterway || '',
+          coords: f.geometry.coordinates
+        });
       }
-    } catch (e) {
-    }
+    } catch(e) {}
   }
+  console.log(`Loaded ${allWays.length} LineString waterways.`);
 
   const finalFeatures = [];
 
-  for (const r of RIVERS_FILTER) {
-    const segs = riverBuckets[r.river_id];
-    console.log(`\nProcessing ${r.name} (${r.river_id}): found ${segs.length} matching surveyed segments`);
+  for (const b of BASIN_TARGETS) {
+    console.log(`\n======================================================`);
+    console.log(`Tracing: ${b.name} (${b.river_id}) from mouth [${b.mouthCoord}]`);
 
-    if (segs.length > 0) {
-      const chains = stitchSegments(segs);
-      const primaryChains = chains.slice(0, 2);
+    // 1. Filter candidate ways inside or touching this basin
+    const candidates = [];
+    for (let i = 0; i < allWays.length; i++) {
+      const w = allWays[i];
+      const c = w.coords;
+      const start = c[0], end = c[c.length - 1];
+      const inBox = (start[0] >= b.minLng && start[0] <= b.maxLng && start[1] >= b.minLat && start[1] <= b.maxLat) ||
+                    (end[0] >= b.minLng && end[0] <= b.maxLng && end[1] >= b.minLat && end[1] <= b.maxLat);
+      if (!inBox) continue;
 
-      primaryChains.forEach((pts, idx) => {
-        const simplified = simplifyPoints(pts, 0.0000003);
-        finalFeatures.push({
-          type: "Feature",
-          properties: {
-            river_id: r.river_id,
-            name: idx === 0 ? r.name : `${r.name} (Reach ${idx + 1})`,
-            basin_name: r.basin_name,
-            reach: idx === 0 ? "Mainstem" : "Tributary",
-            source: "OpenStreetMap Survey-Grade",
-            vertex_count: simplified.length
-          },
-          geometry: {
-            type: "LineString",
-            coordinates: simplified
-          }
+      const isNamedMatch = b.regex.test(`${w.name} ${w.name_en}`);
+      const isWaterway = w.waterway === 'river' || w.waterway === 'stream' || w.waterway === 'canal';
+
+      // Check for artificial single straight hops > 1500m inside the way
+      let hasWildJump = false;
+      for (let j = 0; j < c.length - 1; j++) {
+        if (Math.hypot(c[j][0] - c[j+1][0], c[j][1] - c[j+1][1]) * 111000 > 1500 && b.river_id !== 'basin_mahaweli') {
+          hasWildJump = true;
+          break;
+        }
+      }
+      if (hasWildJump) continue;
+
+      if (isNamedMatch || isWaterway) {
+        candidates.push({
+          idx: i,
+          name: w.name,
+          coords: c,
+          isNamedMatch,
+          waterway: w.waterway
         });
-        console.log(` -> Reach ${idx + 1}: ${simplified.length} vertices (from ${pts.length} raw points)`);
-      });
+      }
     }
+    console.log(`Found ${candidates.length} candidate ways in basin.`);
+
+    // 2. Find starting mouth way
+    let startIdx = -1;
+    let reverseStart = false;
+    let minMouthDist = Infinity;
+
+    for (let i = 0; i < candidates.length; i++) {
+      const c = candidates[i].coords;
+      const dStart = Math.hypot(c[0][0] - b.mouthCoord[0], c[0][1] - b.mouthCoord[1]);
+      const dEnd = Math.hypot(c[c.length-1][0] - b.mouthCoord[0], c[c.length-1][1] - b.mouthCoord[1]);
+      if (dStart < minMouthDist) {
+        minMouthDist = dStart;
+        startIdx = i;
+        reverseStart = false; // flows from mouth upstream, so start is at mouth
+      }
+      if (dEnd < minMouthDist) {
+        minMouthDist = dEnd;
+        startIdx = i;
+        reverseStart = true; // end is at mouth, reverse so mouth is at index 0
+      }
+    }
+
+    const mouthDistMeters = minMouthDist * 111000;
+    console.log(`Mouth way: "${candidates[startIdx].name || '(unnamed)'}" (dist from target mouth: ${mouthDistMeters.toFixed(1)}m, reversed: ${reverseStart})`);
+
+    const visited = new Set();
+    visited.add(startIdx);
+
+    let mouthPts = candidates[startIdx].coords;
+    if (reverseStart) mouthPts = mouthPts.slice().reverse();
+
+    let mainstemChain = mouthPts.slice();
+    let currentUpstream = mainstemChain[mainstemChain.length - 1];
+
+    // 3. Upstream greedy tracer
+    let extended = true;
+    let step = 0;
+    const maxGapDeg = b.maxGapMeters / 111000;
+
+    while (extended && step < 100) {
+      extended = false;
+      step++;
+
+      let bestIdx = -1;
+      let bestDist = Infinity;
+      let bestRev = false;
+
+      for (let i = 0; i < candidates.length; i++) {
+        if (visited.has(i)) continue;
+        const cand = candidates[i];
+        const c = cand.coords;
+        const dStart = Math.hypot(c[0][0] - currentUpstream[0], c[0][1] - currentUpstream[1]);
+        const dEnd = Math.hypot(c[c.length-1][0] - currentUpstream[0], c[c.length-1][1] - currentUpstream[1]);
+
+        // Prefer named matches if multiple within close distance
+        const bonus = cand.isNamedMatch ? 0.0005 : 0;
+
+        if (dStart < bestDist + bonus) {
+          bestDist = dStart;
+          bestIdx = i;
+          bestRev = false;
+        }
+        if (dEnd < bestDist + bonus) {
+          bestDist = dEnd;
+          bestIdx = i;
+          bestRev = true;
+        }
+      }
+
+      if (bestDist <= maxGapDeg && bestIdx >= 0) {
+        visited.add(bestIdx);
+        const nextCand = candidates[bestIdx];
+        let nextPts = nextCand.coords.slice();
+        if (bestRev) nextPts.reverse();
+
+        mainstemChain = mainstemChain.concat(nextPts.slice(1));
+        currentUpstream = mainstemChain[mainstemChain.length - 1];
+        extended = true;
+        console.log(`  Step ${step}: Attached "${nextCand.name || '(unnamed)'}" (${nextPts.length} pts, gap: ${(bestDist*111000).toFixed(1)}m) -> Total: ${mainstemChain.length} pts`);
+      }
+    }
+
+    // Flip orientation so it flows downhill (Highlands -> Ocean Mouth)
+    const orientedDownhill = mainstemChain.slice().reverse();
+
+    // Remove only redundant duplicate/zero-length points (tolerance 0.000000005 ~ 10cm)
+    const cleaned = [];
+    for (let i = 0; i < orientedDownhill.length; i++) {
+      const pt = [Number(orientedDownhill[i][0].toFixed(6)), Number(orientedDownhill[i][1].toFixed(6))];
+      if (cleaned.length === 0 || cleaned[cleaned.length-1][0] !== pt[0] || cleaned[cleaned.length-1][1] !== pt[1]) {
+        cleaned.push(pt);
+      }
+    }
+
+    console.log(`-> Result: ${b.name} Mainstem has ${cleaned.length} satellite-precision vertices from [${cleaned[0]}] to mouth [${cleaned[cleaned.length-1]}]`);
+
+    finalFeatures.push({
+      type: "Feature",
+      properties: {
+        river_id: b.river_id,
+        name: b.name,
+        basin_name: b.basin_name,
+        reach: "Mainstem",
+        source: "OpenStreetMap Satellite-Precision Survey Trace",
+        vertex_count: cleaned.length
+      },
+      geometry: {
+        type: "LineString",
+        coordinates: cleaned
+      }
+    });
   }
 
   const outGeoJson = {
@@ -240,12 +274,10 @@ async function processWaterways() {
 
   const outPath = path.join(__dirname, '..', 'public', 'geo', 'sl-rivers.geojson');
   fs.writeFileSync(outPath, JSON.stringify(outGeoJson, null, 2), 'utf8');
-
   const stat = fs.statSync(outPath);
   console.log(`\n======================================================`);
-  console.log(`SUCCESS: Full OpenStreetMap river geometries extracted.`);
-  console.log(`File: ${outPath} (${(stat.size / 1024).toFixed(2)} KB, ${finalFeatures.length} river reaches)`);
+  console.log(`SUCCESS: public/geo/sl-rivers.geojson written (${(stat.size / 1024).toFixed(2)} KB, ${finalFeatures.length} primary river mainstems)`);
   console.log(`======================================================`);
 }
 
-processWaterways();
+run();
