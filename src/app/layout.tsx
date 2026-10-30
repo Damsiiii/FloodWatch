@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://floodwatch-b7g.pages.dev'),
   title: 'LankaFlood Watch | Real-Time Hydrology & Flood Radar Sri Lanka',
   description: 'Live hydro-meteorological river level monitoring, telemetry, and flood advisories for Sri Lankan river basins.',
 };
