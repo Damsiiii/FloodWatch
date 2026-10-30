@@ -21,10 +21,10 @@ const SEVERITY_WEIGHT: Record<string, number> = {
 };
 
 const RIVER_STATUS_COLORS: Record<string, string> = {
-  MAJOR_FLOOD: '#ef4444', // Red glow
-  MINOR_FLOOD: '#f97316', // Orange glow
-  ALERT: '#eab308',       // Amber glow
-  NORMAL: '#0ea5e9',      // Cyan neon glow
+  MAJOR_FLOOD: '#ef4444',
+  MINOR_FLOOD: '#f97316',
+  ALERT: '#eab308',
+  NORMAL: '#0ea5e9',
   STALE: '#0284c7'
 };
 
@@ -46,14 +46,24 @@ function getRainfallLabel(mm: number): string {
 
 function normalizeBasinId(rawId: string): string {
   if (!rawId) return 'basin_kelani';
-  if (rawId.startsWith('basin_')) return rawId;
-  return `basin_${rawId.toLowerCase()}`;
+  const clean = rawId.toLowerCase().trim();
+  if (clean.startsWith('basin_')) return clean;
+  if (clean.includes('kelani')) return 'basin_kelani';
+  if (clean.includes('kalu')) return 'basin_kalu';
+  if (clean.includes('gin')) return 'basin_gin';
+  if (clean.includes('nilwala')) return 'basin_nilwala';
+  if (clean.includes('attanagalu') || clean.includes('ja-ela') || clean.includes('ja ela')) return 'basin_attanagalu';
+  if (clean.includes('maha')) return 'basin_maha';
+  if (clean.includes('deduru')) return 'basin_deduru';
+  if (clean.includes('mahaweli')) return 'basin_mahaweli';
+  if (clean.includes('walawe')) return 'basin_walawe';
+  return `basin_${clean}`;
 }
 
 function computeBasinWorstStatus(basinId: string, currentStations: StationSnapshot[]): string {
   const normTarget = normalizeBasinId(basinId);
   const basinStations = currentStations.filter((s) => {
-    const sBasinId = s.basin_id || normalizeBasinId(s.basin.split(' ')[0]);
+    const sBasinId = s.basin_id || normalizeBasinId(s.basin);
     return sBasinId === normTarget;
   });
 
@@ -75,7 +85,7 @@ function applyBasinStyling(geojson: any, currentStations: StationSnapshot[], rai
   if (!geojson?.features) return geojson;
 
   geojson.features.forEach((f: any) => {
-    const basinId = normalizeBasinId(f.properties.id);
+    const basinId = normalizeBasinId(f.properties.id || f.properties.name);
 
     if (mode === 'rainfall') {
       const rain = rainfallList?.find(r => normalizeBasinId(r.basin_id) === basinId);
@@ -97,7 +107,7 @@ function applyRiverStyling(geojson: any, currentStations: StationSnapshot[]) {
   if (!geojson?.features) return geojson;
 
   geojson.features.forEach((f: any) => {
-    const riverId = normalizeBasinId(f.properties.river_id || f.properties.id);
+    const riverId = normalizeBasinId(f.properties.river_id || f.properties.basin_name || f.properties.id || f.properties.name);
     const worstStatus = computeBasinWorstStatus(riverId, currentStations);
 
     f.properties.color = RIVER_STATUS_COLORS[worstStatus] || '#0ea5e9';
@@ -120,7 +130,7 @@ export const MapViewer: React.FC<MapViewerProps> = ({
   const riversGeoJsonRef = useRef<any>(null);
   const [viewMode, setViewMode] = useState<'stations' | 'rainfall'>('stations');
 
-  // Dynamic state refs for mouse event callbacks
+  // Dynamic state refs for event listeners
   const stationsRef = useRef(stations);
   const rainfallRef = useRef(rainfall);
   const viewModeRef = useRef(viewMode);
@@ -137,7 +147,6 @@ export const MapViewer: React.FC<MapViewerProps> = ({
     const matching = stationsRef.current.filter(s => (s.basin_id || normalizeBasinId(s.basin)) === norm);
     if (matching.length === 0) return;
 
-    // Pick station with highest severity or first
     const sorted = [...matching].sort((a, b) => (SEVERITY_WEIGHT[b.status] || 0) - (SEVERITY_WEIGHT[a.status] || 0));
     onSelectStation(sorted[0]);
   }, [onSelectStation]);
@@ -191,7 +200,6 @@ export const MapViewer: React.FC<MapViewerProps> = ({
       `;
     }
 
-    // Stations & Water Level Telemetry View
     return `
       <div class="bg-slate-900/95 backdrop-blur-md border border-slate-700/80 rounded-lg p-2.5 shadow-2xl font-mono text-[11px] text-slate-200 min-w-[240px] max-w-[290px] pointer-events-none">
         <div class="flex items-center justify-between gap-2 border-b border-slate-800 pb-1.5 mb-2">
@@ -245,15 +253,16 @@ export const MapViewer: React.FC<MapViewerProps> = ({
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
 
-    map.current = new maplibregl.Map({
+    const newMap = new maplibregl.Map({
       container: mapContainer.current,
       style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
       center: [80.7718, 7.6000],
       zoom: 7.3,
       attributionControl: false
     });
+    map.current = newMap;
 
-    map.current.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+    newMap.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
 
     const popup = new maplibregl.Popup({
       closeButton: false,
@@ -263,10 +272,7 @@ export const MapViewer: React.FC<MapViewerProps> = ({
     });
     popupRef.current = popup;
 
-    map.current.on('load', async () => {
-      const currentMap = map.current;
-      if (!currentMap) return;
-
+    newMap.on('load', async () => {
       try {
         const [basinsRes, riversRes] = await Promise.all([
           fetch('/geo/sl-basins.json'),
@@ -283,12 +289,12 @@ export const MapViewer: React.FC<MapViewerProps> = ({
         const styledRivers = applyRiverStyling(riversData, stationsRef.current);
 
         // 1. BASINS SOURCE & LAYERS
-        currentMap.addSource('sl-basins', {
+        newMap.addSource('sl-basins', {
           type: 'geojson',
           data: styledBasins
         });
 
-        currentMap.addLayer({
+        newMap.addLayer({
           id: 'basins-fill',
           type: 'fill',
           source: 'sl-basins',
@@ -298,7 +304,7 @@ export const MapViewer: React.FC<MapViewerProps> = ({
           }
         });
 
-        currentMap.addLayer({
+        newMap.addLayer({
           id: 'basins-outline',
           type: 'line',
           source: 'sl-basins',
@@ -311,12 +317,12 @@ export const MapViewer: React.FC<MapViewerProps> = ({
         });
 
         // 2. RIVERS SOURCE & DUAL-LAYER NEON STYLING
-        currentMap.addSource('sl-rivers', {
+        newMap.addSource('sl-rivers', {
           type: 'geojson',
           data: styledRivers
         });
 
-        currentMap.addLayer({
+        newMap.addLayer({
           id: 'rivers-glow',
           type: 'line',
           source: 'sl-rivers',
@@ -337,7 +343,7 @@ export const MapViewer: React.FC<MapViewerProps> = ({
           }
         });
 
-        currentMap.addLayer({
+        newMap.addLayer({
           id: 'rivers-core',
           type: 'line',
           source: 'sl-rivers',
@@ -358,54 +364,46 @@ export const MapViewer: React.FC<MapViewerProps> = ({
         });
 
         // 3. INTERACTIVE CLICKS
-        currentMap.on('click', 'rivers-core', (e) => {
+        const handleFeatureClick = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
           if (!e.features || e.features.length === 0) return;
           const feat = e.features[0];
-          const rId = feat.properties?.river_id || feat.properties?.id;
-          if (rId) handleBasinSelection(rId);
-        });
-
-        currentMap.on('click', 'rivers-glow', (e) => {
-          if (!e.features || e.features.length === 0) return;
-          const feat = e.features[0];
-          const rId = feat.properties?.river_id || feat.properties?.id;
-          if (rId) handleBasinSelection(rId);
-        });
-
-        currentMap.on('click', 'basins-fill', (e) => {
-          if (!e.features || e.features.length === 0) return;
-          const feat = e.features[0];
-          const bId = feat.properties?.id;
+          const bId = feat.properties?.river_id || feat.properties?.id || feat.properties?.basin_name || feat.properties?.name;
           if (bId) handleBasinSelection(bId);
-        });
+        };
 
-        // 4. HOVER POPUP BEHAVIOR
-        const handleFeatureMouseMove = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
+        newMap.on('click', 'rivers-core', handleFeatureClick);
+        newMap.on('click', 'rivers-glow', handleFeatureClick);
+        newMap.on('click', 'basins-fill', handleFeatureClick);
+
+        // 4. GENERAL MOUSEMOVE FOR INSTANT HOVER RESPONSE
+        newMap.on('mousemove', (e) => {
           if (!map.current || !popupRef.current) return;
-          map.current.getCanvas().style.cursor = 'pointer';
 
-          if (e.features && e.features.length > 0) {
-            const feat = e.features[0];
-            const basinId = feat.properties?.river_id || feat.properties?.id || '';
+          // Query interactive features under cursor
+          const features = newMap.queryRenderedFeatures(e.point, {
+            layers: ['rivers-core', 'rivers-glow', 'basins-fill']
+          });
+
+          if (features && features.length > 0) {
+            newMap.getCanvas().style.cursor = 'pointer';
+            const feat = features[0];
+            const basinId = feat.properties?.river_id || feat.properties?.id || feat.properties?.basin_name || feat.properties?.name || '';
             const basinName = feat.properties?.basin_name || feat.properties?.name || '';
             const html = buildHoverPopupHtml(basinId, basinName);
 
             popupRef.current
               .setLngLat(e.lngLat)
               .setHTML(html)
-              .addTo(map.current);
+              .addTo(newMap);
+          } else {
+            newMap.getCanvas().style.cursor = '';
+            popupRef.current.remove();
           }
-        };
+        });
 
-        const handleFeatureMouseLeave = () => {
-          if (map.current) map.current.getCanvas().style.cursor = '';
+        newMap.on('mouseleave', () => {
           if (popupRef.current) popupRef.current.remove();
-        };
-
-        currentMap.on('mousemove', 'rivers-core', handleFeatureMouseMove);
-        currentMap.on('mouseleave', 'rivers-core', handleFeatureMouseLeave);
-        currentMap.on('mousemove', 'basins-fill', handleFeatureMouseMove);
-        currentMap.on('mouseleave', 'basins-fill', handleFeatureMouseLeave);
+        });
 
       } catch (err) {
         console.warn('Failed initializing map layers:', err);

@@ -17,6 +17,43 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({ station }) => 
   const catchment = station.catchment;
   const glofasForecast = station.discharge_forecast || catchment?.glofas_forecast || [];
 
+  // Threshold horizontal reference lines plugin
+  const thresholdLinesPlugin = (alertLvl: number, minorLvl: number, majorLvl: number): uPlot.Plugin => {
+    return {
+      hooks: {
+        drawAxes: (u: uPlot) => {
+          const { ctx } = u;
+          const { left, top, width, height } = u.bbox;
+
+          const drawHorizontalLine = (val: number, stroke: string, label: string) => {
+            const yPos = Math.round(u.valToPos(val, 'y', true));
+            if (yPos >= top && yPos <= top + height) {
+              ctx.save();
+              ctx.beginPath();
+              ctx.setLineDash([4, 4]);
+              ctx.strokeStyle = stroke;
+              ctx.lineWidth = 1.5;
+              ctx.moveTo(left, yPos);
+              ctx.lineTo(left + width, yPos);
+              ctx.stroke();
+
+              // Label
+              ctx.fillStyle = stroke;
+              ctx.font = '10px monospace';
+              ctx.textAlign = 'right';
+              ctx.fillText(`${label} (${val}m)`, left + width - 6, yPos - 4);
+              ctx.restore();
+            }
+          };
+
+          drawHorizontalLine(majorLvl, '#ef4444', 'MAJOR FLOOD');
+          drawHorizontalLine(minorLvl, '#f97316', 'MINOR FLOOD');
+          drawHorizontalLine(alertLvl, '#eab308', 'ALERT');
+        }
+      }
+    };
+  };
+
   useEffect(() => {
     if (!chartRef.current) return;
 
@@ -41,15 +78,18 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({ station }) => 
       const opts: uPlot.Options = {
         title: `${station.name} - 24-Hour Observed Hydrograph`,
         width: chartRef.current.clientWidth || 500,
-        height: 230,
+        height: 250,
         cursor: {
           drag: { x: true, y: false }
         },
+        plugins: [
+          thresholdLinesPlugin(station.alert_level, station.minor_flood_level, station.major_flood_level)
+        ],
         scales: {
           x: { time: true },
           y: {
             auto: true,
-            range: (u, min, max) => [0, Math.max(max || 0, station.major_flood_level + 1)]
+            range: (u, min, max) => [0, Math.max(max || 0, station.major_flood_level + 1.5)]
           }
         },
         series: [
@@ -92,7 +132,7 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({ station }) => 
       const opts: uPlot.Options = {
         title: `${station.basin} - GloFAS 7-Day River Discharge Forecast`,
         width: chartRef.current.clientWidth || 500,
-        height: 230,
+        height: 250,
         cursor: { drag: { x: true, y: false } },
         scales: {
           x: { time: true },
@@ -131,7 +171,7 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({ station }) => 
       if (chartRef.current && uplotInstance.current) {
         uplotInstance.current.setSize({
           width: chartRef.current.clientWidth,
-          height: 230
+          height: 250
         });
       }
     };
@@ -226,15 +266,18 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({ station }) => 
 
         {activeTab === 'level' ? (
           <div className="flex items-center gap-3 text-[11px] text-slate-400">
-            <div>
+            <div className="flex items-center gap-1">
+              <span className="w-2.5 h-0.5 bg-amber-400 inline-block"></span>
               <span>Alert: </span>
               <strong className="text-amber-400">{station.alert_level.toFixed(1)}m</strong>
             </div>
-            <div>
+            <div className="flex items-center gap-1">
+              <span className="w-2.5 h-0.5 bg-orange-400 inline-block"></span>
               <span>Minor: </span>
               <strong className="text-orange-400">{station.minor_flood_level.toFixed(1)}m</strong>
             </div>
-            <div>
+            <div className="flex items-center gap-1">
+              <span className="w-2.5 h-0.5 bg-rose-400 inline-block"></span>
               <span>Major: </span>
               <strong className="text-rose-400">{station.major_flood_level.toFixed(1)}m</strong>
             </div>
@@ -247,7 +290,7 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({ station }) => 
       </div>
 
       {/* Chart Canvas */}
-      <div ref={chartRef} className="w-full flex justify-center overflow-x-auto min-h-[230px]" />
+      <div ref={chartRef} className="w-full flex justify-center overflow-x-auto min-h-[250px]" />
     </div>
   );
 };
