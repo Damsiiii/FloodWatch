@@ -340,24 +340,44 @@ export async function runIngestion(env: Env): Promise<HydrologySnapshotPayload> 
 
     const finalAlerts = normalizedAlerts.length > 0 ? normalizedAlerts : MOCK_ALERTS;
 
-    // 3. Ensure database seed if first run
-    const existingStations = await db.select().from(stations);
-    if (existingStations.length === 0) {
-      for (const st of MOCK_STATIONS) {
-        await db.insert(stations).values({
-          id: st.id,
-          name: st.name,
-          basin: st.basin,
-          lat: st.lat,
-          lng: st.lng,
-          alert_level: st.alert_level,
-          minor_flood_level: st.minor_flood_level,
-          major_flood_level: st.major_flood_level,
-        }).onConflictDoNothing();
+    // 3. Ensure database seed if first run (with schema error resilience)
+    let allStations: any[] = [];
+    if (env.DB) {
+      try {
+        const existingStations = await db.select().from(stations);
+        if (existingStations.length === 0) {
+          for (const st of MOCK_STATIONS) {
+            await db.insert(stations).values({
+              id: st.id,
+              name: st.name,
+              basin: st.basin,
+              lat: st.lat,
+              lng: st.lng,
+              alert_level: st.alert_level,
+              minor_flood_level: st.minor_flood_level,
+              major_flood_level: st.major_flood_level,
+            }).onConflictDoNothing();
+          }
+        }
+        allStations = await db.select().from(stations);
+      } catch (err) {
+        console.warn('D1 stations table query or seed failed, using static definitions:', err);
       }
     }
 
-    const allStations = await db.select().from(stations);
+    if (!allStations || allStations.length === 0) {
+      allStations = MOCK_STATIONS.map(s => ({
+        id: s.id,
+        name: s.name,
+        basin: s.basin,
+        lat: s.lat,
+        lng: s.lng,
+        alert_level: s.alert_level,
+        minor_flood_level: s.minor_flood_level,
+        major_flood_level: s.major_flood_level
+      }));
+    }
+
     const stationSnapshots: StationSnapshot[] = [];
 
     let totalAlerts = 0;
@@ -365,21 +385,38 @@ export async function runIngestion(env: Env): Promise<HydrologySnapshotPayload> 
     let majorFloods = 0;
 
     for (const station of allStations) {
-      // Find matching gauge in live Irrigation Department records
+      // Find matching gauges in live Irrigation Department records
       const normSt = (station.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-      const gaugeData = upstreamGauges.find((g: any) => {
+      const normId = (station.id || '').toLowerCase();
+
+      const matchingRecords = upstreamGauges.filter((g: any) => {
         if (!g.gauge) return g.id === station.id || g.station_id === station.id;
         const normG = g.gauge.toLowerCase().replace(/[^a-z0-9]/g, '');
-        if (normSt.includes(normG) || normG.includes(normSt)) return true;
-        if ((normSt.includes('nagatham') || normSt.includes('nagalagam')) && normG.includes('nagalagam')) return true;
-        if (normSt.includes('glencorse') && normG.includes('glencourse')) return true;
-        if (normSt.includes('kitulgala') && normG.includes('kithulgala')) return true;
-        if (normSt.includes('ratnapura') && normG.includes('rathnapura')) return true;
-        if (normSt.includes('millakanda') && (normG.includes('millakanda') || normG.includes('kalawellawa'))) return true;
-        if (normSt.includes('maguru') && normG.includes('magura')) return true;
-        if (normSt.includes('urawa') && normG.includes('urawa')) return true;
-        return false;
-      });
+        if (normId.includes('nagatham') || normSt.includes('nagatham') || normSt.includes('nagalagam')) return normG.includes('nagalagam');
+        if (normId.includes('hanwella') || normSt.includes('hanwella')) return normG.includes('hanwella');
+        if (normId.includes('glencorse') || normSt.includes('glencorse')) return normG.includes('glencourse') || normG.includes('glencorse');
+        if (normId.includes('kitulgala') || normSt.includes('kitulgala')) return normG.includes('kithulgala') || normG.includes('kitulgala');
+        if (normId.includes('holombuwa') || normSt.includes('holombuwa')) return normG.includes('holombuwa');
+        if (normId.includes('ratnapura') || normSt.includes('ratnapura')) return normG.includes('rathnapura') || normG.includes('ratnapura');
+        if (normId.includes('ellagawa') || normSt.includes('ellagawa')) return normG.includes('ellagawa');
+        if (normId.includes('millakanda') || normSt.includes('millakanda')) return normG.includes('millakanda') || normG.includes('kalawellawa');
+        if (normId.includes('putupaula') || normSt.includes('putupaula')) return normG.includes('putupaula');
+        if (normId.includes('magura') || normSt.includes('maguru') || normSt.includes('magura')) return normG.includes('magura');
+        if (normId.includes('thawalama') || normSt.includes('thawalama')) return normG.includes('thawalama');
+        if (normId.includes('baddegama') || normSt.includes('baddegama')) return normG.includes('baddegama');
+        if (normId.includes('pitabeddara') || normSt.includes('pitabeddara')) return normG.includes('pitabeddara');
+        if (normId.includes('akuressa') || normSt.includes('akuressa') || normId.includes('urawa')) return normG.includes('urawa') || normG.includes('akuressa');
+        if (normId.includes('panadugama') || normSt.includes('panadugama')) return normG.includes('panadugama');
+        if (normId.includes('dunamale') || normSt.includes('dunamale')) return normG.includes('dunamale');
+        if (normId.includes('giriulla') || normSt.includes('giriulla')) return normG.includes('giriulla');
+        if (normId.includes('moragaswewa') || normSt.includes('moragaswewa')) return normG.includes('moragaswewa');
+        if (normId.includes('peradeniya') || normSt.includes('peradeniya')) return normG.includes('peradeniya');
+        if (normId.includes('weragantota') || normSt.includes('weragantota')) return normG.includes('weraganthota') || normG.includes('weragantota');
+        if (normId.includes('manampitiya') || normSt.includes('manampitiya')) return normG.includes('manampitiya');
+        return normSt.includes(normG) || normG.includes(normSt);
+      }).sort((a: any, b: any) => new Date(a.CreationDate).getTime() - new Date(b.CreationDate).getTime());
+
+      const gaugeData = matchingRecords.length > 0 ? matchingRecords[matchingRecords.length - 1] : null;
 
       let waterLevel: number | null = null;
       if (gaugeData && typeof gaugeData.water_level === 'number') {
@@ -390,28 +427,44 @@ export async function runIngestion(env: Env): Promise<HydrologySnapshotPayload> 
 
       let observedAt = gaugeData?.CreationDate || gaugeData?.timestamp || nowIso;
 
-      if (waterLevel === null) {
-        const recent = await db.select().from(readings)
-          .where(eq(readings.station_id, station.id))
-          .orderBy(desc(readings.observed_at))
-          .limit(1);
-
-        const mockMatch = MOCK_STATIONS.find(s => s.id === station.id);
-        const baseLevel = recent[0]?.water_level ?? mockMatch?.current_level ?? 3.0;
-        waterLevel = Number((baseLevel + (Math.random() * 0.1 - 0.04)).toFixed(2));
+      if (waterLevel === null && env.DB) {
+        try {
+          const recent = await db.select().from(readings)
+            .where(eq(readings.station_id, station.id))
+            .orderBy(desc(readings.observed_at))
+            .limit(1);
+          if (recent.length > 0 && recent[0].water_level !== null) {
+            waterLevel = recent[0].water_level;
+          }
+        } catch {
+          // ignore DB error
+        }
       }
 
-      const prevReadings = await db.select().from(readings)
-        .where(eq(readings.station_id, station.id))
-        .orderBy(desc(readings.observed_at))
-        .limit(1);
+      if (waterLevel === null) {
+        const mockMatch = MOCK_STATIONS.find(s => s.id === station.id);
+        waterLevel = mockMatch?.current_level ?? 2.0;
+      }
 
       let rateOfChange = 0;
-      if (prevReadings.length > 0 && prevReadings[0].water_level !== null && waterLevel !== null) {
-        const prevTime = new Date(prevReadings[0].observed_at).getTime();
-        const currTime = new Date(observedAt).getTime();
-        const hours = Math.max((currTime - prevTime) / (1000 * 3600), 0.0833);
-        rateOfChange = Number(((waterLevel - prevReadings[0].water_level) / hours).toFixed(2));
+      if (matchingRecords.length >= 2) {
+        const prev = matchingRecords[matchingRecords.length - 2];
+        rateOfChange = Number((gaugeData.water_level - prev.water_level).toFixed(2));
+      } else if (env.DB) {
+        try {
+          const prevReadings = await db.select().from(readings)
+            .where(eq(readings.station_id, station.id))
+            .orderBy(desc(readings.observed_at))
+            .limit(1);
+          if (prevReadings.length > 0 && prevReadings[0].water_level !== null && waterLevel !== null) {
+            const prevTime = new Date(prevReadings[0].observed_at).getTime();
+            const currTime = new Date(observedAt).getTime();
+            const hours = Math.max((currTime - prevTime) / (1000 * 3600), 0.0833);
+            rateOfChange = Number(((waterLevel - prevReadings[0].water_level) / hours).toFixed(2));
+          }
+        } catch {
+          // ignore
+        }
       }
 
       let status: StationStatus = 'NORMAL';
@@ -430,30 +483,53 @@ export async function runIngestion(env: Env): Promise<HydrologySnapshotPayload> 
         status = 'STALE';
       }
 
-      try {
-        await db.insert(readings).values({
-          station_id: station.id,
-          water_level: waterLevel,
-          rate_of_change: rateOfChange,
-          status: status,
-          observed_at: observedAt
-        }).onConflictDoNothing();
-      } catch (err) {
+      if (env.DB) {
+        try {
+          await db.insert(readings).values({
+            station_id: station.id,
+            water_level: waterLevel,
+            rate_of_change: rateOfChange,
+            status: status,
+            observed_at: observedAt
+          }).onConflictDoNothing();
+        } catch {
+          // ignore DB insertion error if table not ready
+        }
       }
 
-      const historyRows = await db.select().from(readings)
-        .where(eq(readings.station_id, station.id))
-        .orderBy(desc(readings.observed_at))
-        .limit(288);
+      // Build real 24h history from live matching records
+      const historyPoints: Array<{ timestamp: string; level: number | null }> = [];
+      let lastSec = -1;
+      matchingRecords.slice(-24).forEach((rec: any) => {
+        const sec = Math.floor(new Date(rec.CreationDate).getTime() / 1000);
+        if (sec > lastSec) {
+          lastSec = sec;
+          historyPoints.push({
+            timestamp: rec.CreationDate,
+            level: Number(rec.water_level.toFixed(2))
+          });
+        }
+      });
 
-      const history_24h = historyRows.reverse().map(r => ({
-        timestamp: r.observed_at,
-        level: r.water_level
-      }));
+      let finalHistory: Array<{ timestamp: string; level: number | null }> = historyPoints;
+      if (finalHistory.length === 0 && env.DB) {
+        try {
+          const historyRows = await db.select().from(readings)
+            .where(eq(readings.station_id, station.id))
+            .orderBy(desc(readings.observed_at))
+            .limit(288);
+          finalHistory = historyRows.reverse().map(r => ({
+            timestamp: r.observed_at,
+            level: r.water_level ?? 0
+          }));
+        } catch {
+          // ignore
+        }
+      }
 
-      const finalHistory = history_24h.length > 0 ? history_24h : (
-        MOCK_STATIONS.find(s => s.id === station.id)?.history_24h || []
-      );
+      if (finalHistory.length === 0) {
+        finalHistory = MOCK_STATIONS.find(s => s.id === station.id)?.history_24h || [];
+      }
 
       const basinId = getBasinIdFromName(station.basin);
       const catchmentData = catchments[basinId] || MOCK_CATCHMENTS[basinId];
