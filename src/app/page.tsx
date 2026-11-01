@@ -1,13 +1,88 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { HydrologySnapshotPayload, StationSnapshot } from '../types/hydrology';
+import { HydrologySnapshotPayload, StationSnapshot, StationStatus } from '../types/hydrology';
 import { MOCK_SNAPSHOT } from '../../worker/mockData';
 import { AlertsTicker } from '../components/AlertsTicker';
 import { StationStatusCard } from '../components/StationStatusCard';
 import { MapViewer } from '../components/MapViewer';
 import { HydrographChart } from '../components/HydrographChart';
 import { Waves, ShieldAlert, Activity, RefreshCw, X, ChevronDown, ChevronUp } from 'lucide-react';
+
+function applyLiveGaugeReadings(prevData: HydrologySnapshotPayload, liveRecords: any[]): HydrologySnapshotPayload {
+  const records = [...liveRecords].sort((a, b) => new Date(b.CreationDate).getTime() - new Date(a.CreationDate).getTime());
+
+  let totalAlerts = 0;
+  let minorFloods = 0;
+  let majorFloods = 0;
+
+  const updatedStations = prevData.stations.map((st) => {
+    const normSt = st.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    const match = records.find((g: any) => {
+      if (!g.gauge) return false;
+      const normG = g.gauge.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (normSt.includes(normG) || normG.includes(normSt)) return true;
+      if ((normSt.includes('nagatham') || normSt.includes('nagalagam')) && normG.includes('nagalagam')) return true;
+      if (normSt.includes('glencorse') && normG.includes('glencourse')) return true;
+      if (normSt.includes('kitulgala') && normG.includes('kithulgala')) return true;
+      if (normSt.includes('ratnapura') && normG.includes('rathnapura')) return true;
+      if (normSt.includes('millakanda') && (normG.includes('millakanda') || normG.includes('kalawellawa'))) return true;
+      if (normSt.includes('maguru') && normG.includes('magura')) return true;
+      if (normSt.includes('urawa') && normG.includes('urawa')) return true;
+      return false;
+    });
+
+    if (!match || typeof match.water_level !== 'number') {
+      if (st.status === 'MAJOR_FLOOD') majorFloods++;
+      else if (st.status === 'MINOR_FLOOD') minorFloods++;
+      else if (st.status === 'ALERT') totalAlerts++;
+      return st;
+    }
+
+    const liveLevel = Number(match.water_level.toFixed(2));
+    const alertLevel = typeof match.alertpull === 'number' ? match.alertpull : st.alert_level;
+    const minorLevel = typeof match.minorpull === 'number' ? match.minorpull : st.minor_flood_level;
+    const majorLevel = typeof match.majorpull === 'number' ? match.majorpull : st.major_flood_level;
+
+    let newStatus: StationStatus = 'NORMAL';
+    if (liveLevel >= majorLevel) {
+      newStatus = 'MAJOR_FLOOD';
+      majorFloods++;
+    } else if (liveLevel >= minorLevel) {
+      newStatus = 'MINOR_FLOOD';
+      minorFloods++;
+    } else if (liveLevel >= alertLevel) {
+      newStatus = 'ALERT';
+      totalAlerts++;
+    }
+
+    const rateOfChange = Number((liveLevel - (st.current_level ?? liveLevel)).toFixed(2));
+
+    return {
+      ...st,
+      current_level: liveLevel,
+      alert_level: alertLevel,
+      minor_flood_level: minorLevel,
+      major_flood_level: majorLevel,
+      status: newStatus,
+      rate_of_change: rateOfChange,
+      last_updated: match.CreationDate || new Date().toISOString(),
+    };
+  });
+
+  return {
+    ...prevData,
+    timestamp: new Date().toISOString(),
+    stations: updatedStations,
+    summary: {
+      ...prevData.summary,
+      active_alerts: totalAlerts,
+      minor_floods: minorFloods,
+      major_floods: majorFloods,
+    },
+  };
+}
 
 export default function Dashboard() {
   const [data, setData] = useState<HydrologySnapshotPayload>(MOCK_SNAPSHOT);
@@ -19,17 +94,31 @@ export default function Dashboard() {
   const fetchSnapshot = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/snapshot');
-      if (res.ok) {
+      // 1. Try local or configured worker API
+      const res = await fetch('/api/snapshot').catch(() => null);
+      if (res && res.ok) {
         const payload: HydrologySnapshotPayload = await res.json();
         setData(payload);
         setLastSync(new Date(payload.timestamp).toLocaleTimeString());
-      } else {
-        console.warn('API non-200 response, using static snapshot state');
-        setLastSync(new Date().toLocaleTimeString());
+        return;
       }
+
+      // 2. Direct Live Fallback: Fetch official live government telemetry
+      const liveGaugesRes = await fetch('https://risesrilanka.org/api/gauges').catch(() => null);
+      if (liveGaugesRes && liveGaugesRes.ok) {
+        const json: any = await liveGaugesRes.json();
+        const records = Array.isArray(json) ? json : (json?.records || []);
+        if (records.length > 0) {
+          setData(prev => applyLiveGaugeReadings(prev, records));
+          setLastSync(new Date().toLocaleTimeString());
+          return;
+        }
+      }
+
+      console.warn('Live gauge fallback unavailable, retaining current snapshot');
+      setLastSync(new Date().toLocaleTimeString());
     } catch (e) {
-      console.warn('Snapshot fetch fallback to mock state:', e);
+      console.warn('Snapshot fetch fallback error:', e);
       setLastSync(new Date().toLocaleTimeString());
     } finally {
       setIsLoading(false);

@@ -299,7 +299,12 @@ export async function runIngestion(env: Env): Promise<HydrologySnapshotPayload> 
     let upstreamGauges: any[] = [];
     if (gaugesRes && gaugesRes.ok) {
       try {
-        upstreamGauges = await gaugesRes.json();
+        const j: any = await gaugesRes.json();
+        if (Array.isArray(j)) {
+          upstreamGauges = j;
+        } else if (j && Array.isArray(j.records)) {
+          upstreamGauges = j.records;
+        }
       } catch (e) {
         console.warn('Failed parsing gauges json:', e);
       }
@@ -309,8 +314,9 @@ export async function runIngestion(env: Env): Promise<HydrologySnapshotPayload> 
     const rawAlerts: any[] = [];
     if (alertsRes && alertsRes.ok) {
       try {
-        const j = await alertsRes.json();
+        const j: any = await alertsRes.json();
         if (Array.isArray(j)) rawAlerts.push(...j);
+        else if (j && Array.isArray(j.items)) rawAlerts.push(...j.items);
       } catch (e) {
         console.warn('Failed parsing alerts json:', e);
       }
@@ -359,10 +365,30 @@ export async function runIngestion(env: Env): Promise<HydrologySnapshotPayload> 
     let majorFloods = 0;
 
     for (const station of allStations) {
-      const gaugeData = upstreamGauges.find((g: any) => g.id === station.id || g.station_id === station.id);
+      // Find matching gauge in live Irrigation Department records
+      const normSt = (station.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const gaugeData = upstreamGauges.find((g: any) => {
+        if (!g.gauge) return g.id === station.id || g.station_id === station.id;
+        const normG = g.gauge.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (normSt.includes(normG) || normG.includes(normSt)) return true;
+        if ((normSt.includes('nagatham') || normSt.includes('nagalagam')) && normG.includes('nagalagam')) return true;
+        if (normSt.includes('glencorse') && normG.includes('glencourse')) return true;
+        if (normSt.includes('kitulgala') && normG.includes('kithulgala')) return true;
+        if (normSt.includes('ratnapura') && normG.includes('rathnapura')) return true;
+        if (normSt.includes('millakanda') && (normG.includes('millakanda') || normG.includes('kalawellawa'))) return true;
+        if (normSt.includes('maguru') && normG.includes('magura')) return true;
+        if (normSt.includes('urawa') && normG.includes('urawa')) return true;
+        return false;
+      });
 
-      let waterLevel: number | null = gaugeData?.level ?? gaugeData?.water_level ?? null;
-      let observedAt = gaugeData?.timestamp || nowIso;
+      let waterLevel: number | null = null;
+      if (gaugeData && typeof gaugeData.water_level === 'number') {
+        waterLevel = Number(gaugeData.water_level.toFixed(2));
+      } else if (gaugeData && typeof gaugeData.level === 'number') {
+        waterLevel = Number(gaugeData.level.toFixed(2));
+      }
+
+      let observedAt = gaugeData?.CreationDate || gaugeData?.timestamp || nowIso;
 
       if (waterLevel === null) {
         const recent = await db.select().from(readings)
