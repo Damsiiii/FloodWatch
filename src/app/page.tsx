@@ -9,41 +9,101 @@ import { MapViewer } from '../components/MapViewer';
 import { HydrographChart } from '../components/HydrographChart';
 import { Waves, ShieldAlert, Activity, RefreshCw, X, ChevronDown, ChevronUp } from 'lucide-react';
 
-function applyLiveGaugeReadings(prevData: HydrologySnapshotPayload, liveRecords: any[]): HydrologySnapshotPayload {
-  const records = [...liveRecords].sort((a, b) => new Date(b.CreationDate).getTime() - new Date(a.CreationDate).getTime());
+function matchGaugeForStation(st: StationSnapshot, g: any): boolean {
+  if (!g?.gauge) return false;
+  const normSt = st.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const normId = st.id.toLowerCase();
+  const normG = g.gauge.toLowerCase().replace(/[^a-z0-9]/g, '');
 
+  if (normId.includes('nagatham') || normSt.includes('nagatham') || normSt.includes('nagalagam')) {
+    return normG.includes('nagalagam');
+  }
+  if (normId.includes('hanwella') || normSt.includes('hanwella')) {
+    return normG.includes('hanwella');
+  }
+  if (normId.includes('glencorse') || normSt.includes('glencorse')) {
+    return normG.includes('glencourse') || normG.includes('glencorse');
+  }
+  if (normId.includes('kitulgala') || normSt.includes('kitulgala')) {
+    return normG.includes('kithulgala') || normG.includes('kitulgala');
+  }
+  if (normId.includes('holombuwa') || normSt.includes('holombuwa')) {
+    return normG.includes('holombuwa');
+  }
+  if (normId.includes('ratnapura') || normSt.includes('ratnapura')) {
+    return normG.includes('rathnapura') || normG.includes('ratnapura');
+  }
+  if (normId.includes('ellagawa') || normSt.includes('ellagawa')) {
+    return normG.includes('ellagawa');
+  }
+  if (normId.includes('millakanda') || normSt.includes('millakanda')) {
+    return normG.includes('millakanda') || normG.includes('kalawellawa');
+  }
+  if (normId.includes('putupaula') || normSt.includes('putupaula')) {
+    return normG.includes('putupaula');
+  }
+  if (normId.includes('magura') || normSt.includes('maguru') || normSt.includes('magura')) {
+    return normG.includes('magura');
+  }
+  if (normId.includes('thawalama') || normSt.includes('thawalama')) {
+    return normG.includes('thawalama');
+  }
+  if (normId.includes('baddegama') || normSt.includes('baddegama')) {
+    return normG.includes('baddegama');
+  }
+  if (normId.includes('pitabeddara') || normSt.includes('pitabeddara')) {
+    return normG.includes('pitabeddara');
+  }
+  if (normId.includes('akuressa') || normSt.includes('akuressa') || normId.includes('urawa')) {
+    return normG.includes('urawa') || normG.includes('akuressa');
+  }
+  if (normId.includes('panadugama') || normSt.includes('panadugama')) {
+    return normG.includes('panadugama');
+  }
+  if (normId.includes('dunamale') || normSt.includes('dunamale')) {
+    return normG.includes('dunamale');
+  }
+  if (normId.includes('giriulla') || normSt.includes('giriulla')) {
+    return normG.includes('giriulla');
+  }
+  if (normId.includes('moragaswewa') || normSt.includes('moragaswewa')) {
+    return normG.includes('moragaswewa');
+  }
+  if (normId.includes('peradeniya') || normSt.includes('peradeniya')) {
+    return normG.includes('peradeniya');
+  }
+  if (normId.includes('weragantota') || normSt.includes('weragantota')) {
+    return normG.includes('weraganthota') || normG.includes('weragantota');
+  }
+  if (normId.includes('manampitiya') || normSt.includes('manampitiya')) {
+    return normG.includes('manampitiya');
+  }
+
+  return normSt.includes(normG) || normG.includes(normSt);
+}
+
+function applyLiveGaugeReadings(prevData: HydrologySnapshotPayload, liveRecords: any[]): HydrologySnapshotPayload {
   let totalAlerts = 0;
   let minorFloods = 0;
   let majorFloods = 0;
 
   const updatedStations = prevData.stations.map((st) => {
-    const normSt = st.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const matchingRecords = liveRecords
+      .filter((g: any) => matchGaugeForStation(st, g) && typeof g.water_level === 'number' && g.CreationDate)
+      .sort((a: any, b: any) => new Date(a.CreationDate).getTime() - new Date(b.CreationDate).getTime());
 
-    const match = records.find((g: any) => {
-      if (!g.gauge) return false;
-      const normG = g.gauge.toLowerCase().replace(/[^a-z0-9]/g, '');
-      if (normSt.includes(normG) || normG.includes(normSt)) return true;
-      if ((normSt.includes('nagatham') || normSt.includes('nagalagam')) && normG.includes('nagalagam')) return true;
-      if (normSt.includes('glencorse') && normG.includes('glencourse')) return true;
-      if (normSt.includes('kitulgala') && normG.includes('kithulgala')) return true;
-      if (normSt.includes('ratnapura') && normG.includes('rathnapura')) return true;
-      if (normSt.includes('millakanda') && (normG.includes('millakanda') || normG.includes('kalawellawa'))) return true;
-      if (normSt.includes('maguru') && normG.includes('magura')) return true;
-      if (normSt.includes('urawa') && normG.includes('urawa')) return true;
-      return false;
-    });
-
-    if (!match || typeof match.water_level !== 'number') {
+    if (matchingRecords.length === 0) {
       if (st.status === 'MAJOR_FLOOD') majorFloods++;
       else if (st.status === 'MINOR_FLOOD') minorFloods++;
       else if (st.status === 'ALERT') totalAlerts++;
       return st;
     }
 
-    const liveLevel = Number(match.water_level.toFixed(2));
-    const alertLevel = typeof match.alertpull === 'number' ? match.alertpull : st.alert_level;
-    const minorLevel = typeof match.minorpull === 'number' ? match.minorpull : st.minor_flood_level;
-    const majorLevel = typeof match.majorpull === 'number' ? match.majorpull : st.major_flood_level;
+    const latest = matchingRecords[matchingRecords.length - 1];
+    const liveLevel = Number(latest.water_level.toFixed(2));
+    const alertLevel = typeof latest.alertpull === 'number' ? latest.alertpull : st.alert_level;
+    const minorLevel = typeof latest.minorpull === 'number' ? latest.minorpull : st.minor_flood_level;
+    const majorLevel = typeof latest.majorpull === 'number' ? latest.majorpull : st.major_flood_level;
 
     let newStatus: StationStatus = 'NORMAL';
     if (liveLevel >= majorLevel) {
@@ -57,7 +117,27 @@ function applyLiveGaugeReadings(prevData: HydrologySnapshotPayload, liveRecords:
       totalAlerts++;
     }
 
-    const rateOfChange = Number((liveLevel - (st.current_level ?? liveLevel)).toFixed(2));
+    // Rate of change over previous reading
+    let rateOfChange = 0;
+    if (matchingRecords.length >= 2) {
+      const prev = matchingRecords[matchingRecords.length - 2];
+      rateOfChange = Number((latest.water_level - prev.water_level).toFixed(2));
+    }
+
+    // Build real 24h hydrograph from actual historical readings
+    const historyPoints: { timestamp: string; level: number }[] = [];
+    let lastSec = -1;
+
+    matchingRecords.slice(-24).forEach((rec: any) => {
+      const sec = Math.floor(new Date(rec.CreationDate).getTime() / 1000);
+      if (sec > lastSec) {
+        lastSec = sec;
+        historyPoints.push({
+          timestamp: rec.CreationDate,
+          level: Number(rec.water_level.toFixed(2))
+        });
+      }
+    });
 
     return {
       ...st,
@@ -67,7 +147,8 @@ function applyLiveGaugeReadings(prevData: HydrologySnapshotPayload, liveRecords:
       major_flood_level: majorLevel,
       status: newStatus,
       rate_of_change: rateOfChange,
-      last_updated: match.CreationDate || new Date().toISOString(),
+      last_updated: latest.CreationDate || new Date().toISOString(),
+      history_24h: historyPoints.length > 0 ? historyPoints : st.history_24h,
     };
   });
 
@@ -81,15 +162,20 @@ function applyLiveGaugeReadings(prevData: HydrologySnapshotPayload, liveRecords:
       minor_floods: minorFloods,
       major_floods: majorFloods,
     },
+    alerts: (majorFloods === 0 && minorFloods === 0 && totalAlerts === 0) ? [] : prevData.alerts
   };
 }
 
 export default function Dashboard() {
   const [data, setData] = useState<HydrologySnapshotPayload>(MOCK_SNAPSHOT);
-  const [selectedStation, setSelectedStation] = useState<StationSnapshot | null>(null);
+  const [selectedStationId, setSelectedStationId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [lastSync, setLastSync] = useState<string>('');
   const [isMobileListExpanded, setIsMobileListExpanded] = useState<boolean>(false);
+
+  const selectedStation = selectedStationId
+    ? data.stations.find((s) => s.id === selectedStationId) || null
+    : null;
 
   const fetchSnapshot = async () => {
     setIsLoading(true);
@@ -224,7 +310,7 @@ export default function Dashboard() {
                 station={st}
                 isSelected={selectedStation?.id === st.id}
                 onSelect={(station) => {
-                  setSelectedStation(station);
+                  setSelectedStationId(station.id);
                   setIsMobileListExpanded(false); // Collapse sheet to reveal station on map
                 }}
               />
@@ -238,7 +324,7 @@ export default function Dashboard() {
             stations={data.stations}
             rainfall={data.rainfall}
             selectedStation={selectedStation}
-            onSelectStation={(st) => setSelectedStation(st)}
+            onSelectStation={(st) => setSelectedStationId(st.id)}
           />
 
           {/* Station Details Drawer */}
@@ -258,7 +344,7 @@ export default function Dashboard() {
                 </div>
 
                 <button
-                  onClick={() => setSelectedStation(null)}
+                  onClick={() => setSelectedStationId(null)}
                   className="p-1 hover:bg-slate-800 rounded-md text-slate-400 hover:text-slate-200 transition"
                   title="Close station details"
                 >

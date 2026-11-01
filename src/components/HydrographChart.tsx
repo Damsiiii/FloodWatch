@@ -65,13 +65,28 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({ station }) => 
     if (activeTab === 'level') {
       if (!station.history_24h || station.history_24h.length === 0) return;
 
+      const sortedHistory = [...station.history_24h]
+        .map(item => ({
+          t: Math.floor(new Date(item.timestamp).getTime() / 1000),
+          level: item.level
+        }))
+        .filter(item => !isNaN(item.t) && item.level !== null && !isNaN(item.level))
+        .sort((a, b) => a.t - b.t);
+
+      // uPlot requires strictly monotonically increasing x values
       const xVals: number[] = [];
       const yVals: (number | null)[] = [];
+      let lastT = -1;
 
-      station.history_24h.forEach(item => {
-        xVals.push(Math.floor(new Date(item.timestamp).getTime() / 1000));
-        yVals.push(item.level);
+      sortedHistory.forEach(pt => {
+        if (pt.t > lastT) {
+          xVals.push(pt.t);
+          yVals.push(pt.level);
+          lastT = pt.t;
+        }
       });
+
+      if (xVals.length === 0) return;
 
       const data: [number[], (number | null)[]] = [xVals, yVals];
 
@@ -89,7 +104,10 @@ export const HydrographChart: React.FC<HydrographChartProps> = ({ station }) => 
           x: { time: true },
           y: {
             auto: true,
-            range: (u, min, max) => [0, Math.max(max || 0, station.major_flood_level + 1.5)]
+            range: (u, min, max) => [
+              Math.min(0, Math.floor((min ?? 0) - 0.5)),
+              Math.max(max || 0, station.major_flood_level + 1.5)
+            ]
           }
         },
         series: [
